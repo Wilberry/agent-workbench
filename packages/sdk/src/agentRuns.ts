@@ -5,10 +5,14 @@ import type { Database } from './types';
 import { subscribeToRunEvents } from './realtime';
 
 export const agentRuns = {
-  async enqueue(
-    userId: string,
-    conversationId: string,
-    workflow: string[],
+  async enqueueRun(
+    options: {
+      userId: string;
+      conversationId: string;
+      workflow: string[];
+      orgId?: string;
+      modelOverride?: string;
+    },
     client?: SupabaseClient<Database>
   ) {
     const supabase = client ?? createServerSupabaseClient();
@@ -17,9 +21,10 @@ export const agentRuns = {
       .from<AgentRun>('agent_runs')
       .insert([
         {
-          user_id: userId,
-          conversation_id: conversationId,
-          workflow,
+          user_id: options.userId,
+          conversation_id: options.conversationId,
+          workflow: options.workflow,
+          organization_id: options.orgId ?? null,
           status: 'pending'
         }
       ])
@@ -68,7 +73,21 @@ export const agentRuns = {
 
     if (error) throw error;
     return data ?? [];
-  }
+  },
+
+  async listOrgRuns(orgId: string, limit = 50, client?: SupabaseClient<Database>) {
+    const supabase = client ?? createServerSupabaseClient();
+
+    const { data, error } = await supabase
+      .from<AgentRun>('agent_runs')
+      .select('*')
+      .eq('organization_id', orgId)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (error) throw error;
+    return data ?? [];
+  },
 
   async replay(runId: string, client?: SupabaseClient<Database>) {
     const supabase = client ?? createServerSupabaseClient();

@@ -1,6 +1,7 @@
 export * from './agents';
 export * from './conversations';
 export * from './agentRuns';
+export * from './orgs';
 export * from './realtime';
 export * from './tools';
 export * from './marketplace';

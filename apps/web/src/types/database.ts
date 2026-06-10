@@ -41,6 +41,64 @@ export type Database = {
           created_at: string;
         };
       };
+      organizations: {
+        Row: {
+          id: string;
+          owner_id: string | null;
+          name: string;
+          slug: string;
+          description: string | null;
+          metadata: Record<string, unknown>;
+          created_at: string;
+          updated_at: string;
+        };
+      };
+      organization_memberships: {
+        Row: {
+          id: string;
+          org_id: string;
+          user_id: string;
+          role: 'owner' | 'admin' | 'member';
+          created_at: string;
+        };
+      };
+      marketplace_agents: {
+        Row: {
+          id: string;
+          org_id: string;
+          name: string;
+          slug: string;
+          description: string | null;
+          visibility: 'public' | 'private';
+          latest_version_id: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+      };
+      org_billing: {
+        Row: {
+          org_id: string;
+          plan: 'free' | 'pro' | 'enterprise';
+          tokens_used: number;
+          runs_used: number;
+          last_billed: string | null;
+        };
+      };
+      agent_runs: {
+        Row: {
+          id: string;
+          user_id: string;
+          conversation_id: string;
+          workflow: string[];
+          current_step: number;
+          execution_trace: any[];
+          organization_id: string | null;
+          status: 'pending' | 'running' | 'completed' | 'failed';
+          error_message: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+      };
     };
     Views: {};
     Functions: {};
