@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
-    "lint": "turbo run lint"
+    "lint": "turbo run lint",
+    "test": "vitest",
+    "test:unit": "vitest run tests/**/*.test.ts",
+    "test:e2e": "vitest run tests/e2e/**/*.ts"
   },
   "workspaces": [
     "packages/*",
@@ -16,6 +19,8 @@
     "typescript": "^5.2.2",
     "turbo": "^1.12.1",
     "prettier": "^3.1.0",
-    "husky": "^9.0.0"
+    "husky": "^9.0.0",
+    "vitest": "^0.40.1",
+    "dotenv": "^16.3.1"
   }
 }
