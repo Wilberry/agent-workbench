@@ -1,0 +1,34 @@
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const OPENAI_EMBEDDING_URL = 'https://api.openai.com/v1/embeddings';
+
+if (!OPENAI_API_KEY) {
+  throw new Error('OPENAI_API_KEY is required for OpenAI embeddings');
+}
+
+export async function generateEmbedding(text: string): Promise<number[]> {
+  const response = await fetch(OPENAI_EMBEDDING_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${OPENAI_API_KEY}`
+    },
+    body: JSON.stringify({
+      model: 'text-embedding-3-small',
+      input: text
+    })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Embedding request failed: ${response.status} ${errorText}`);
+  }
+
+  const payload = await response.json();
+  const embedding = payload?.data?.[0]?.embedding;
+
+  if (!Array.isArray(embedding)) {
+    throw new Error('Invalid embedding response from OpenAI');
+  }
+
+  return embedding;
+}

@@ -1,0 +1,21 @@
+{
+  "name": "agent-workbench",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "devDependencies": {
+    "typescript": "^5.2.2",
+    "turbo": "^1.12.1",
+    "prettier": "^3.1.0",
+    "husky": "^9.0.0"
+  }
+}

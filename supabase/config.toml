@@ -1,0 +1,4 @@
+# Supabase local project configuration
+# Update these values after running `supabase init`.
+
+project_id = "agent-workbench"

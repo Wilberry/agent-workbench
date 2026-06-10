@@ -1,0 +1,38 @@
+# Dependencies
+node_modules
+
+# Build
+.next
+dist
+build
+out
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local
+.env.development.local
+.env.production.local
+
+# Supabase
+.supabase
+
+# Coverage
+coverage
+
+# Playwright
+playwright-report
+test-results
+
+# Turbo
+.turbo
+
+# IDE
+.vscode
+.idea
+
+# OS
+.DS_Store
+Thumbs.db
