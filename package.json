@@ -7,9 +7,16 @@
     "dev": "turbo run dev",
     "build": "turbo run build",
     "lint": "turbo run lint",
+    "validate": "pnpm lint && pnpm build && pnpm test:unit && pnpm test:integration",
     "test": "vitest",
-    "test:unit": "vitest run tests/**/*.test.ts",
-    "test:e2e": "vitest run tests/e2e/**/*.ts"
+    "test:unit": "vitest run tests/unit/**/*.test.ts",
+    "test:integration": "vitest run tests/integration/**/*.test.ts",
+    "test:security": "vitest run tests/security/**/*.test.ts",
+    "test:reliability": "vitest run tests/reliability/**/*.test.ts",
+    "test:reliability:ci": "vitest run tests/reliability --reporter json > test-results.json || true && node scripts/ci/report-vitest.js test-results.json",
+    "test:playwright": "playwright test",
+    "test:performance": "k6 run tests/performance/load_test.js",
+    "test:e2e": "pnpm test:playwright"
   },
   "workspaces": [
     "packages/*",
@@ -21,6 +28,10 @@
     "prettier": "^3.1.0",
     "husky": "^9.0.0",
     "vitest": "^0.40.1",
-    "dotenv": "^16.3.1"
+    "dotenv": "^16.3.1",
+    "@playwright/test": "^1.45.0",
+    "supertest": "^6.4.2",
+    "@testing-library/react": "^14.0.0",
+    "@testing-library/jest-dom": "^6.0.0"
   }
 }

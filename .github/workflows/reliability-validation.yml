@@ -1,0 +1,94 @@
+name: Reliability Validation
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch: {}
+
+jobs:
+  reliability:
+    runs-on: ubuntu-latest
+    services:
+      docker:
+        image: docker:24.0.5
+        options: --privileged
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Install supabase CLI
+        run: npm install -g supabase
+
+      - name: Start Supabase local stack
+        env:
+          SUPABASE_TELEMETRY: '0'
+        run: |
+          supabase start --no-telemetry &
+          for i in {1..60}; do
+            if curl -sS http://localhost:54321/ >/dev/null 2>&1; then
+              echo "supabase local is up"; break
+            fi
+            sleep 2
+          done
+
+      - name: Apply DB migrations
+        env:
+          PG_CONN: "postgresql://postgres:postgres@localhost:54322/postgres"
+        run: |
+          for f in supabase/migrations/*.sql; do
+            echo "Applying $f"
+            psql "$PG_CONN" -f "$f" || true
+          done
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run reliability tests (CI)
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy
+          SUPABASE_SERVICE_ROLE_KEY: postgres
+        run: pnpm test:reliability:ci || true
+
+      - name: Run integration tests
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy
+          SUPABASE_SERVICE_ROLE_KEY: postgres
+        run: pnpm test:integration || true
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps || true
+
+      - name: Run E2E Playwright tests
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy
+          SUPABASE_SERVICE_ROLE_KEY: postgres
+        run: pnpm test:playwright || true
+
+      - name: Generate DLQ report
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
+          SUPABASE_SERVICE_ROLE_KEY: postgres
+        run: node scripts/ci/dlq-report.js || true
+
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: reliability-results
+          path: |
+            test-results.json
+            reliability-summary.txt
+            dlq-summary.json

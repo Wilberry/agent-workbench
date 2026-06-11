@@ -3,11 +3,14 @@ import { callOpenAI } from './agentRouter';
 import { runTool } from './tools';
 import { randomUUID } from 'crypto';
 import {
-  type WorkflowExecutionStep,
   type AgentRunQueueJob,
   persistExecutionStep,
   markRunCompleted,
   markRunFailed,
+  markQueueJobCompleted,
+  markQueueJobFailed,
+  incrementAttemptsAndMaybeDead,
+  reclaimStaleJobs,
   setProcessing,
   type ExecutionStep
 } from './queue';
@@ -214,6 +217,7 @@ ${JSON.stringify(toolResult, null, 2)}`
 
         await persistExecutionStep(runId, errorExecStep);
         await markRunFailed(runId, `Step ${stepIndex} (${role}) failed after ${MAX_RETRIES} retries: ${stepError}`);
+        await markQueueJobFailed(runId, stepError ?? `Step ${stepIndex} (${role}) failed`);
         setProcessing(runId, false);
         throw new Error(`Workflow failed at step ${stepIndex}`);
       }
@@ -223,11 +227,19 @@ ${JSON.stringify(toolResult, null, 2)}`
 
     // Mark complete
     await markRunCompleted(runId);
+    await markQueueJobCompleted(runId);
     setProcessing(runId, false);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error('Workflow execution failed:', errorMessage);
-    setProcessing(runId, false);
+    try {
+      const { attempts, maxAttempts, isDead } = await incrementAttemptsAndMaybeDead(runId, errorMessage);
+      if (isDead) {
+        await markRunFailed(runId, `Job failed after ${attempts}/${maxAttempts} attempts: ${errorMessage}`);
+      }
+    } catch (qErr) {
+      console.warn('Failed to update job attempts/queue state:', qErr);
+    }
     throw error;
   }
 }
@@ -240,6 +252,8 @@ export async function startBackgroundWorker(): Promise<void> {
       try {
         const job = await dequeueAgentRun();
         if (!job) {
+          // no jobs - attempt to reclaim any stale jobs periodically
+          await reclaimStaleJobs().catch(() => {});
           await sleep(1000);
           continue;
         }
