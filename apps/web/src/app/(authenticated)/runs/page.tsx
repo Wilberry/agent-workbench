@@ -34,12 +34,46 @@ export default async function RunsPage() {
     failed: 'bg-red-900 text-red-100'
   };
 
+  const runCounts = runs.reduce(
+    (acc, run) => {
+      acc.total += 1;
+      if (run.status === 'completed') acc.completed += 1;
+      if (run.status === 'running') acc.running += 1;
+      if (run.status === 'pending') acc.pending += 1;
+      if (run.status === 'failed') acc.failed += 1;
+      return acc;
+    },
+    { total: 0, completed: 0, running: 0, pending: 0, failed: 0 }
+  );
+
   return (
     <main className="min-h-screen bg-slate-950 text-white p-6">
       <div className="mx-auto max-w-6xl space-y-6">
         <div className="rounded-3xl border border-slate-700 bg-slate-900 p-6">
           <h1 className="text-3xl font-semibold">Agent Runs</h1>
           <p className="mt-2 text-slate-400">Track all workflow executions and their status.</p>
+          <div className="mt-6 grid gap-4 sm:grid-cols-5">
+            <div className="rounded-3xl border border-slate-700 bg-slate-950 p-4 text-sm">
+              <div className="font-semibold text-slate-300">Total runs</div>
+              <div className="mt-2 text-3xl font-semibold text-white">{runCounts.total}</div>
+            </div>
+            <div className="rounded-3xl border border-slate-700 bg-slate-950 p-4 text-sm">
+              <div className="font-semibold text-slate-300">Completed</div>
+              <div className="mt-2 text-3xl font-semibold text-emerald-200">{runCounts.completed}</div>
+            </div>
+            <div className="rounded-3xl border border-slate-700 bg-slate-950 p-4 text-sm">
+              <div className="font-semibold text-slate-300">Running</div>
+              <div className="mt-2 text-3xl font-semibold text-blue-200">{runCounts.running}</div>
+            </div>
+            <div className="rounded-3xl border border-slate-700 bg-slate-950 p-4 text-sm">
+              <div className="font-semibold text-slate-300">Pending</div>
+              <div className="mt-2 text-3xl font-semibold text-yellow-200">{runCounts.pending}</div>
+            </div>
+            <div className="rounded-3xl border border-slate-700 bg-slate-950 p-4 text-sm">
+              <div className="font-semibold text-slate-300">Failed</div>
+              <div className="mt-2 text-3xl font-semibold text-red-200">{runCounts.failed}</div>
+            </div>
+          </div>
         </div>
 
         {runs.length === 0 ? (

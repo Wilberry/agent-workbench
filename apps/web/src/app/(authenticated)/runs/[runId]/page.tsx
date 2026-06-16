@@ -18,16 +18,15 @@ type AgentRun = {
   workflow: string[];
   current_step: number;
   execution_trace: Array<{
-    stepIndex: number;
-    agentRole: string;
-    input: string;
-    output: string;
-    toolsCalled: string[];
-    memoryUsed: boolean;
-    timestamp: string;
-    modelIterations: number;
-    status?: string;
+    id: string;
+    run_id?: string;
+    step: string;
+    status: string;
+    input?: any;
+    output?: any;
     error?: string;
+    timestamp: string;
+    metadata?: { model?: string; tokens?: number; toolName?: string } | null;
   }>;
   status: 'pending' | 'running' | 'completed' | 'failed';
   error_message?: string | null;
@@ -62,13 +61,26 @@ export default async function RunDetailPage({ params }: Params) {
   return (
     <main className="min-h-screen bg-slate-950 text-white p-6">
       <div className="mx-auto max-w-6xl space-y-6">
-        <div className="flex items-center space-x-3">
-          <Link
-            href="/runs"
-            className="text-slate-400 transition hover:text-slate-100"
-          >
-            ← Back to runs
-          </Link>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <Link
+              href="/runs"
+              className="text-slate-400 transition hover:text-slate-100"
+            >
+              ← Back to runs
+            </Link>
+            <Link
+              href={`/runs/${run.id}/replay`}
+              className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-semibold text-slate-200 hover:border-emerald-500"
+            >
+              Replay run
+            </Link>
+          </div>
+          <div className="rounded-3xl border border-slate-700 bg-slate-900 p-4 text-sm text-slate-400">
+            <div>Workflow: {(run.workflow as string[]).join(' → ')}</div>
+            <div>Step {run.current_step} / {(run.workflow as string[]).length}</div>
+            <div>Status: {run.status}</div>
+          </div>
         </div>
 
         <div className="rounded-3xl border border-slate-700 bg-slate-900 p-6">
@@ -126,14 +138,14 @@ export default async function RunDetailPage({ params }: Params) {
           ) : (
             trace.map((step) => (
               <details
-                key={step.stepIndex}
+                key={step.id}
                 className="rounded-2xl border border-slate-700 bg-slate-900"
                 open={trace.length === 1}
               >
                 <summary className="cursor-pointer px-4 py-3 font-semibold text-slate-100">
                   <div className="flex items-center justify-between">
                     <div>
-                      <span className="text-emerald-400">{step.agentRole}</span>
+                      <span className="text-emerald-400">{step.step}</span>
                       {step.status === 'failed' && (
                         <span className="ml-2 inline-block rounded bg-red-900 px-2 py-1 text-xs text-red-100">
                           Failed
@@ -177,16 +189,16 @@ export default async function RunDetailPage({ params }: Params) {
 
                   <div className="grid grid-cols-2 gap-2 text-xs text-slate-400">
                     <div>
-                      <div className="font-semibold">Tools:</div>
-                      <div>{step.toolsCalled.length > 0 ? step.toolsCalled.join(', ') : 'None'}</div>
+                      <div className="font-semibold">Tool called:</div>
+                      <div>{step.metadata?.toolName ?? 'None'}</div>
                     </div>
                     <div>
-                      <div className="font-semibold">Iterations:</div>
-                      <div>{step.modelIterations}</div>
+                      <div className="font-semibold">Tokens:</div>
+                      <div>{step.metadata?.tokens ?? 'N/A'}</div>
                     </div>
                     <div>
                       <div className="font-semibold">Memory used:</div>
-                      <div>{step.memoryUsed ? 'Yes' : 'No'}</div>
+                      <div>{step.metadata?.model ? 'Yes' : 'Unknown'}</div>
                     </div>
                     <div>
                       <div className="font-semibold">Status:</div>
@@ -197,15 +209,7 @@ export default async function RunDetailPage({ params }: Params) {
               </details>
             ))
           )}
-          {/* Client component subscribes to realtime updates and renders timeline */}
-          <div>
-            {/* @ts-ignore - Client component import */}
-            {/* eslint-disable-next-line @next/next/no-typos */}
-            <script />
-          </div>
           <div className="mt-4">
-            {/* Render client-side detail component */}
-            {/* eslint-disable-next-line react/jsx-no-undef */}
             <RunDetailClient runId={run.id} initialTrace={trace} initialStatus={run.status} />
           </div>
         </div>

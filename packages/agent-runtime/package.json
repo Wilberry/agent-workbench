@@ -8,6 +8,7 @@
     "dev": "tsc --watch"
   },
   "dependencies": {
-    "@agent-workbench/sdk": "*"
+    "@agent-workbench/sdk": "workspace:*",
+    "node-fetch": "^3.3.1"
   }
 }

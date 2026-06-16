@@ -49,5 +49,29 @@ export const agents = {
 
     if (error) throw error;
     return data;
+  },
+
+  async update(
+    agentId: string,
+    updates: { name?: string; description?: string | null; system_prompt?: string; model?: string },
+    client?: SupabaseClient<Database>
+  ) {
+    const supabase = client ?? createServerSupabaseClient();
+    const { data, error } = await supabase
+      .from<Agent>('agents')
+      .update(updates)
+      .eq('id', agentId)
+      .select('*')
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async delete(agentId: string, client?: SupabaseClient<Database>) {
+    const supabase = client ?? createServerSupabaseClient();
+    const { error } = await supabase.from<Agent>('agents').delete().eq('id', agentId);
+    if (error) throw error;
+    return true;
   }
 };

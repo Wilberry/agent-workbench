@@ -1,0 +1,659 @@
+we should treat this like a real prodt Vistartup would—not a  Wrtfolich
+
+A developer platform for:
+
+BuildiAgent Workbench
+
+A developer platform for:
+
+Building AI agents
+
+Testing AI agents
+
+Evaluating AI agents
+
+Observing AI agents
+on:
+
+Supabase
+
+TypeScript
+
+Next.js
+
+LangGraph
+ilt on:
+
+Supabase
+
+TypeScript
+
+Next.js
+
+LangGraph
+
+MCP
+
+pgse.
+
+
+
+
+---
+
+Phase 0 tor, built natively on Supabase.
+
+
+
+
+---
+
+P:
+
+Define users
+
+Define workflows
+
+Define ang code:
+
+Define users
+
+Define workflows
+
+Define arch
+
+Debug loy support agent
+
+Monitor cost
+
+Detect regressions
+
+
+Persona 3
+
+Develonitor cosate
+
+Needs:
+
+Create MCP -
+ols
+
+Publish documentation
+
+Test workfnt
+
+C
+
+
+---
+
+Core Workflows
+
+Workflow 1
+el
+     gent
+
+Create Project
+      ↓
+Configure Model
+     gent
+
+Create Project
+      ↓
+Configure Model
+     gent
+
+Create Project
+      ↓
+Configure Model
+     gent
+
+Create Project
+      ↓
+Configure Model
+     gent
+
+Create Project
+      ↓
+Configure Model
+      ↓
+Add Agent
+
+Uze Metrist
+      ↓
+Trace Stored
+      ↓
+Dashboard
+      ↓
+Alerts
+
+
+---
+
+end (Next Architecture
+
+System Architectr
+       |
+ d (Next.js)
+       |
+       SQL
+├── pgvector
+├── Aut    |
+St     |
+Agent Runtimeions
+└── Realtime
+
+ penAI
+├── Anthropic
+└── MCP Clients
+
+
+---
+
+Phase projects fae Design
+
+This is where most portfol
+
+users
+
+id
+organizatios_id
+email
+role
+c
+description
+cr
+
+projects
+
+id
+organizatid
+project_id
+name
+system_prompt
+model
+te
+agents
+
+id
+project_id
+n--
+
+traces
+
+id
+agent_id
+request
+response
+ed_at
+
+
+---
+
+traces
+
+id
+created_at
+
+
+---
+
+toponcalls
+
+id
+trace_id
+tool_name
+input
+outpu---
+
+tool_calls
+
+id
+trace_id
+tooluations
+
+it
+output
+duration_ms
+success
+
+
+---
+
+evaluations
+
+it
+output
+dud
+name
+dataset_id
+status
+created_ons
+
+id
+projectation_results
+
+id
+evaluationreated_at
+
+
+tency
+cost
+hallucination_score
+luation_id
+score
+latency
+cost
+halontent
+ion_score
+
+
+---
+
+document
+Phase 3 — Securitontent
+embeddiething Supabase engineers carSecurity
+
+This is something Supabase engineers carSecurity
+
+This is something Supabase engineers carSecurity
+
+This is something Supabase engineers carSecurity
+
+This is something Supabase engineers carSecurity
+
+This is something Supabase engineers carSecurity
+
+This is something Supabase engineers carSecurit= auth.u Management
+
+Storiting
+
+Audit logs
+
+
+
+---
+
+Secrets Management
+
+Storiting
+
+Audit logs
+
+
+
+ose to cAPI_KEY
+
+inside Edge Functions.
+
+Never expose to cAPI_KEY
+
+inside Edge Functions.
+
+Never expose to cAPI_KEY
+
+inside Edge Functions.
+
+Never expose to cAPI_KEY
+
+inside Edge Functions.
+
+Never expose to client.
+
+ool Execl:
+
+GPT-4o
+
+GPT-5 family
+
+Supported Models
+
+Initial:
+
+GPT-4o
+
+GPT-5 family
+
+Supported Models
+
+Initial:
+
+GPT-4o
+
+GPT-5 family
+
+Supported Models
+
+Initial:
+
+GPT-4o
+
+GPT-5 family (where alProvile)
+
+Claude
+
+Gemini
+
+
+Abstract behind:
+
+ModelProvider
+
+inte feature
+
+PostgreSQL MCP
+
+Tools:
+
+query_dat-in MCP Servers
+
+PostgreSQL MCP
+
+Tools:
+
+query_database
+list_tables
+describe_table
+
+
+---
+
+Documentation MCP
+
+Tools:
+
+search_docs
+retrieve-
+
+Documentation MCPearch MCP
+
+Tools:
+
+semaetrieve_doc
+
+
+---
+
+Vector Search MCP
+
+Tools:
+
+semantic_search
+
+
+---
+
+MCP Registry
+
+Users can:
+
+Install MCP Server
+Enable Tools
+Grant Permissions
+
+
+---
+
+Phase 6 — Observability Platform
+
+LangSmith-like functionality": "...",
+  "model": tion
+
+Store:
+
+{
+  "user_input": "...",
+  "model": "..tency": aces
+
+filter
+
+Trace Explorer
+
+Features:
+
+search traces
+
+filter failur Explorer
+
+Features:
+
+search traces
+
+filter failures
+
+compual DAG:
+Responsnt phase.
+
+
+---
+
+Dataset Management
+
+Uploadimportant phase.
+
+
+---
+
+Dataset Management
+
+Uploadimportant phase.
+
+
+---
+
+Dataset Management
+
+Uploadimportant phase.
+
+
+---
+
+Dataset Management
+
+Upload:
+
+question
+racy
+
+LLrrect tool?
+
+
+--esponse ent Version: 91%
+Previous Version: 
+
+Output:
+
+Current Version: 91%
+Previous Version: 
+
+Output:
+
+Current Version: 91%
+Previous Version: 
+
+Output:
+
+Currenetectedon: 91%
+Previous Version: 94%
+
+Regression Detected
+
+
+---
+
+Phase 8 — Vecto
+
+PDF
+
+MarkdPlatform
+
+Document Ingestion
+
+Sources:
+
+PDF
+
+Markdown
+
+HTML
+
+URLs
+
+
+
+---
+
+Pih
+
+
+---
+
+Retrieval
+
+Hybrid:
+
+Vec
+ ↓
+Store
+ ↓
+Search
+
+
+---
+
+Retrieval
+
+Hybrid:
+
+Vec
+ ↓
+Store
+ ↓
+Search
+
+
+---
+
+Retrieval
+
+Hybrid:
+
+Vec
+ ↓
+Store
+ ↓
+Search
+
+
+---
+
+Retrieval
+
+Hybrid:
+
+Vec
+ ↓
+Store
+ ↓
+Search
+
+
+---
+
+Retrieval
+
+Hybrid:
+
+Vec
+ ↓
+Store
+ ↓
+Search
+
+
+---
+
+Retrieval
+
+Hybrid:
+
+Vector Search
++
+Keyword Search
+
+
+---
+
+Phase 9 — Dashe
+
+totalnowledge Base
+
+documents
+
+embeddings
+
+
+
+---
+
+MCP Tools
+
+ Experience
+
+Supabase strongly vale 10 — Developer Experience
+
+Supabase strongly vale 10 — Developer Experience
+
+Supabase strongly vale 10 — Developer Experience
+
+Supabase strongly vale 10 — Developer Experience
+
+Supabase strongly values developer toolinkbench eh } from "@workbench/sdk"
+
+
+---
+
+API
+
+POST /agents/run
+Png
+
+Required for this role.
+
+
+---
+
+Unit Tests
+
+TTest:
+
+agent execution
+
+urrent users
+
+
+
+k6
+
+
+Benchmark:
+
+100
+500t-workbench/
+
+apcs/
+
+examples/
+
+
+---
+
+Phase 13 — Launch Assets
+
+2. Documentaing:
+
+Professional d.
+
+4. Bl Supost
+
+"Building an Agent Eva0mmmmmmmmeeeeeeeeeeeeeei   ttt

@@ -53,8 +53,7 @@ DECLARE
   claimed_id uuid;
 BEGIN
   WITH next_job AS (
-    SELECT id
-    FROM public.agent_run_jobs
+    SELECT public.agent_run_jobs.id
     WHERE status = 'pending'
     ORDER BY created_at ASC
     FOR UPDATE SKIP LOCKED
@@ -82,7 +81,7 @@ DECLARE
   rec RECORD;
 BEGIN
   FOR rec IN
-    SELECT id FROM public.agent_run_jobs
+    SELECT public.agent_run_jobs.id FROM public.agent_run_jobs
     WHERE status = 'running'
       AND locked_at IS NOT NULL
       AND locked_at < NOW() - lease_interval

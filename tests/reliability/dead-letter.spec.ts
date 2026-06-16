@@ -1,22 +1,30 @@
-import { describe, it, expect } from 'vitest';
+import { beforeAll, describe, it, expect } from 'vitest';
 import { createServerSupabaseClient } from '@agent-workbench/sdk';
 import { enqueueAgentRun, incrementAttemptsAndMaybeDead } from '@agent-workbench/agent-runtime';
+import { createTestUserWithAgent } from '../utils/createTestUserWithAgent';
 import { randomUUID } from 'crypto';
 
 const supabase = createServerSupabaseClient();
+let seededUserId: string;
+let seededAgentId: string;
+
+beforeAll(async () => {
+  const seeded = await createTestUserWithAgent();
+  seededUserId = seeded.userId;
+  seededAgentId = seeded.agentId;
+});
 
 describe('Dead-letter handling', () => {
   it('moves job to failed state after exceeding max attempts', async () => {
     const conversationId = randomUUID();
-    const userId = randomUUID();
 
     await supabase.from('conversations').insert([
-      { id: conversationId, agent_id: randomUUID(), user_id: userId, title: 'dead letter test' }
+      { id: conversationId, agent_id: seededAgentId, user_id: seededUserId, title: 'dead letter test' }
     ]);
 
     const runId = await enqueueAgentRun({
       runId: '',
-      userId,
+      userId: seededUserId,
       conversationId,
       message: 'dead letter',
       workflow: ['Planner'],

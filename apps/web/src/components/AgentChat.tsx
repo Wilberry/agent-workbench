@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { subscribeToRunEvents } from '@agent-workbench/sdk';
 import ExecutionTraceTimeline from './ExecutionTraceTimeline';
 
@@ -43,6 +43,7 @@ export default function AgentChat({ agentId, conversationId, userId }: Props) {
   const [trace, setTrace] = useState<ExecutionTrace | null>(null);
   const [executionSteps, setExecutionSteps] = useState<ExecutionStep[]>([]);
   const [isRunning, setIsRunning] = useState(false);
+  const unsubscribeRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     async function loadMessages() {
@@ -56,6 +57,15 @@ export default function AgentChat({ agentId, conversationId, userId }: Props) {
       loadMessages();
     }
   }, [conversationId]);
+
+  useEffect(() => {
+    return () => {
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
+        unsubscribeRef.current = null;
+      }
+    };
+  }, []);
 
   const typedMessages = useMemo(
     () =>
@@ -91,6 +101,11 @@ export default function AgentChat({ agentId, conversationId, userId }: Props) {
 
     setMessages((prev) => [...prev, assistantMessage]);
 
+    if (unsubscribeRef.current) {
+      unsubscribeRef.current();
+      unsubscribeRef.current = null;
+    }
+
     let unsubscribe: (() => void) | null = null;
 
     try {
@@ -100,6 +115,7 @@ export default function AgentChat({ agentId, conversationId, userId }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId,
+          agentId,
           conversationId,
           message: userMessage.content,
           workflow: ['Planner', 'Executor', 'Reviewer']
@@ -128,7 +144,7 @@ export default function AgentChat({ agentId, conversationId, userId }: Props) {
               return [...prev, step];
             });
 
-            if (step.output) {
+            if (step.step === 'reviewer' && step.status === 'completed' && step.output) {
               setMessages((prev) =>
                 prev.map((message) =>
                   message.id === assistantMessage.id ? { ...message, content: step.output } : message
@@ -171,19 +187,18 @@ export default function AgentChat({ agentId, conversationId, userId }: Props) {
           // ignore errors from handler
         }
       });
+      unsubscribeRef.current = unsubscribe;
     } catch (err) {
       setError((err as Error).message);
       setMessages((prev) => prev.filter((message) => message.id !== assistantMessage.id));
       setIsRunning(false);
     } finally {
       setIsSending(false);
-      // Unsubscribe when component unmounts or after completion
       if (unsubscribe) {
-        setTimeout(() => unsubscribe?.(), 5000); // Give UI time to update
+        unsubscribeRef.current = unsubscribe;
       }
     }
   };
-
   // Cleanup subscription on unmount
   useEffect(() => {
     return () => {

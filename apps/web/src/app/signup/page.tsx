@@ -1,37 +1,45 @@
 'use client';
 
-import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { getBrowserSupabase } from '@/lib/supabaseBrowserClient';
 
-export default function LoginPage() {
+export default function SignupPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   const router = useRouter();
 
-  const handleLogin = async () => {
+  const handleSignup = async () => {
     setLoading(true);
     setError(null);
+    setMessage(null);
 
     const supabase = getBrowserSupabase();
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signUp({ email, password });
 
     if (error) {
       setError(error.message);
-    } else {
-      router.push('/agents');
+      setLoading(false);
+      return;
     }
 
+    if (data?.user) {
+      router.push('/agents');
+      return;
+    }
+
+    setMessage('Check your email to confirm your account.');
     setLoading(false);
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-950 p-4">
       <div className="w-full max-w-md rounded-[32px] border border-slate-800 bg-slate-900 p-8 shadow-xl shadow-slate-950/40">
-        <h1 className="text-3xl font-semibold text-white mb-6">Sign in</h1>
+        <h1 className="text-3xl font-semibold text-white mb-6">Create account</h1>
 
         <label className="block mb-4 text-slate-300">
           Email
@@ -54,19 +62,20 @@ export default function LoginPage() {
         </label>
 
         {error ? <div className="mb-4 text-red-400">{error}</div> : null}
+        {message ? <div className="mb-4 text-emerald-400">{message}</div> : null}
 
         <button
-          onClick={handleLogin}
+          onClick={handleSignup}
           disabled={loading}
           className="w-full rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950 transition disabled:opacity-60"
         >
-          {loading ? 'Signing in…' : 'Sign in'}
+          {loading ? 'Creating account…' : 'Create account'}
         </button>
 
         <p className="mt-6 text-center text-sm text-slate-400">
-          New here?{' '}
-          <Link href="/signup" className="font-semibold text-emerald-400 hover:text-emerald-300">
-            Create an account
+          Already have an account?{' '}
+          <Link href="/login" className="font-semibold text-emerald-400 hover:text-emerald-300">
+            Sign in
           </Link>
           .
         </p>

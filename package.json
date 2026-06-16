@@ -2,7 +2,7 @@
   "name": "agent-workbench",
   "private": true,
   "version": "0.1.0",
-  "packageManager": "pnpm@10",
+  "packageManager": "pnpm@10.34.2",
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
@@ -13,6 +13,7 @@
     "test:integration": "vitest run tests/integration/**/*.test.ts",
     "test:security": "vitest run tests/security/**/*.test.ts",
     "test:reliability": "vitest run tests/reliability/**/*.test.ts",
+    "seed:reliability-data": "node scripts/seed-reliability-data.js",
     "test:reliability:ci": "vitest run tests/reliability --reporter json > test-results.json || true && node scripts/ci/report-vitest.js test-results.json",
     "test:playwright": "playwright test",
     "test:performance": "k6 run tests/performance/load_test.js",
@@ -27,11 +28,12 @@
     "turbo": "^1.12.1",
     "prettier": "^3.1.0",
     "husky": "^9.0.0",
-    "vitest": "^0.40.1",
+    "vitest": "^4.1.8",
     "dotenv": "^16.3.1",
     "@playwright/test": "^1.45.0",
-    "supertest": "^6.4.2",
+    "supertest": "^7.2.2",
     "@testing-library/react": "^14.0.0",
-    "@testing-library/jest-dom": "^6.0.0"
+    "@testing-library/jest-dom": "^6.0.0",
+    "@supabase/supabase-js": "^2.35.0"
   }
 }

@@ -78,28 +78,111 @@ export async function enqueueAgentRun(job: AgentRunQueueJob): Promise<string> {
   return run.id;
 }
 
-export async function dequeueAgentRun(): Promise<AgentRunQueueJob | null> {
+export async function dequeueAgentRun(userId?: string): Promise<AgentRunQueueJob | null> {
   const supabase = createServerSupabaseClient();
 
-  const { data, error } = await supabase.rpc('dequeue_agent_run_job');
-  if (error) {
-    throw error;
+  let rpcError: any;
+  if (!userId) {
+    try {
+      const { data, error } = await supabase.rpc('dequeue_agent_run_job');
+      if (!error && data) {
+        const rowCandidate = data as any;
+        const row = Array.isArray(rowCandidate) ? rowCandidate[0] : rowCandidate;
+        if (!row) {
+          return null;
+        }
+
+        return {
+          runId: row.run_id,
+          userId: row.user_id,
+          conversationId: row.conversation_id,
+          message: row.message,
+          workflow: row.workflow,
+          memories: row.memories ?? []
+        };
+      }
+
+      rpcError = error;
+    } catch (err) {
+      rpcError = err;
+    }
+
+    const errorMessage = String(rpcError?.message ?? rpcError ?? '');
+    if (!errorMessage.includes('ambiguous') && !errorMessage.includes('invalid')) {
+      if (rpcError) {
+        throw rpcError;
+      }
+      return null;
+    }
   }
 
-  const rowCandidate = data as any;
-  const row = Array.isArray(rowCandidate) ? rowCandidate[0] : rowCandidate;
-  if (!row) {
+  // Fallback for remote DB functions when dequeue_agent_run_job is unavailable or broken,
+  // or if a user-specific dequeue is requested for deterministic testing.
+  const query = supabase
+    .from('agent_run_jobs')
+    .select('id, run_id, user_id, conversation_id, message, workflow, memories')
+    .eq('status', 'pending');
+
+  if (userId) {
+    query.eq('user_id', userId);
+  }
+
+  const { data: candidate, error: selectError } = await query
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (selectError) {
+    throw selectError;
+  }
+  if (!candidate) {
     return null;
   }
 
+  const { error: updateError } = await supabase
+    .from('agent_run_jobs')
+    .update({ status: 'running', locked_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq('id', candidate.id);
+
+  if (updateError) {
+    throw updateError;
+  }
+
   return {
-    runId: row.run_id,
-    userId: row.user_id,
-    conversationId: row.conversation_id,
-    message: row.message,
-    workflow: row.workflow,
-    memories: row.memories ?? []
+    runId: candidate.run_id,
+    userId: candidate.user_id,
+    conversationId: candidate.conversation_id,
+    message: candidate.message,
+    workflow: candidate.workflow,
+    memories: candidate.memories ?? []
   };
+}
+
+function parseLeaseInterval(leaseInterval: string): number {
+  const match = leaseInterval.match(/^(\d+)\s*(second|seconds|minute|minutes|hour|hours|day|days)$/i);
+  if (!match) {
+    throw new Error(`Unsupported lease interval: ${leaseInterval}`);
+  }
+
+  const value = Number(match[1]);
+  const unit = match[2].toLowerCase();
+
+  switch (unit) {
+    case 'second':
+    case 'seconds':
+      return value * 1000;
+    case 'minute':
+    case 'minutes':
+      return value * 60 * 1000;
+    case 'hour':
+    case 'hours':
+      return value * 60 * 60 * 1000;
+    case 'day':
+    case 'days':
+      return value * 24 * 60 * 60 * 1000;
+    default:
+      throw new Error(`Unsupported lease interval unit: ${unit}`);
+  }
 }
 
 export async function incrementAttemptsAndMaybeDead(runId: string, failureReason?: string): Promise<{ attempts: number; maxAttempts: number; isDead: boolean }> {
@@ -149,12 +232,54 @@ export async function incrementAttemptsAndMaybeDead(runId: string, failureReason
 
 export async function reclaimStaleJobs(leaseInterval = '5 minutes'): Promise<string[]> {
   const supabase = createServerSupabaseClient();
-  const { data, error } = await supabase.rpc('reclaim_stale_agent_run_jobs', { lease_interval: leaseInterval });
-  if (error) throw error;
 
-  const rows = data as any;
-  if (!rows) return [];
-  const ids = Array.isArray(rows) ? rows.map((r: any) => r.id) : [rows.id];
+  let rpcError: any;
+  try {
+    const { data, error } = await supabase.rpc('reclaim_stale_agent_run_jobs', { lease_interval: leaseInterval });
+    if (!error && data) {
+      const rows = data as any;
+      if (!rows) return [];
+      const ids = Array.isArray(rows) ? rows.map((r: any) => r.id) : [rows.id];
+      return ids;
+    }
+    rpcError = error;
+  } catch (err) {
+    rpcError = err;
+  }
+
+  const errorMessage = String(rpcError?.message ?? rpcError ?? '');
+  if (!errorMessage.includes('ambiguous') && !errorMessage.includes('invalid')) {
+    throw rpcError;
+  }
+
+  const cutoff = new Date(Date.now() - parseLeaseInterval(leaseInterval)).toISOString();
+  const { data: rows, error: selectError } = await supabase
+    .from('agent_run_jobs')
+    .select('id, attempts, max_attempts')
+    .eq('status', 'running')
+    .not('locked_at', 'is', null)
+    .lt('locked_at', cutoff);
+
+  if (selectError) {
+    throw selectError;
+  }
+
+  const staleRows = Array.isArray(rows) ? rows.filter((row: any) => row.attempts < row.max_attempts) : [];
+  const ids: string[] = [];
+
+  for (const row of staleRows) {
+    const { error: updateError } = await supabase
+      .from('agent_run_jobs')
+      .update({ status: 'pending', locked_at: null, updated_at: new Date().toISOString() })
+      .eq('id', row.id);
+
+    if (updateError) {
+      throw updateError;
+    }
+
+    ids.push(row.id);
+  }
+
   return ids;
 }
 
