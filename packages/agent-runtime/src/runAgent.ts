@@ -14,11 +14,12 @@ export type ExecutionTrace = {
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 
-if (!OPENAI_API_KEY) {
-  throw new Error('OPENAI_API_KEY is required for agent runtime');
-}
 
 async function callOpenAI(model: string, messages: Array<{ role: string; content: string }>) {
+  if (!OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY is required for agent runtime');
+  }
+
   const res = await fetch(OPENAI_URL, {
     method: 'POST',
     headers: {
@@ -119,7 +120,7 @@ export async function runAgent({
   }
 
   const { data: userMessageRow, error: userMessageError } = await supabase
-    .from<Message>('messages')
+    .from('messages')
     .insert([{ conversation_id: conversationId, role: 'user', content: userMessage }])
     .select('id')
     .single();
@@ -130,14 +131,14 @@ export async function runAgent({
 
   const userEmbeddingPromise = generateEmbedding(userMessage)
     .then((vector) =>
-      supabase.from('messages').update({ embedding: vector }).eq('id', userMessageRow.id)
+      supabase.from('messages').update({ embedding: vector }).eq('id', (userMessageRow as Pick<Message, 'id'>).id)
     )
     .catch((error) => {
       console.error('Failed to generate user message embedding:', error);
     });
 
   const { data: history, error: historyError } = await supabase
-    .from<Message>('messages')
+    .from('messages')
     .select('*')
     .eq('conversation_id', conversationId)
     .order('created_at', { ascending: true });
@@ -148,7 +149,7 @@ export async function runAgent({
 
   const memories = await getRelevantMemories({ conversationId, query: userMessage });
   const memoryContext = formatMemoryContext(memories);
-  const conversationHistory = (history ?? []).map((message) => ({ role: message.role, content: message.content }));
+  const conversationHistory = ((history ?? []) as Message[]).map((message) => ({ role: message.role, content: message.content }));
   // Prefer agent version if available
   let selectedSystemPrompt = agent.system_prompt;
   let selectedModel = agent.model ?? 'gpt-4o-mini';
@@ -283,7 +284,7 @@ ${toolResultText}` });
   });
 
   const { data: assistantRow, error: assistantError } = await supabase
-    .from<Message>('messages')
+    .from('messages')
     .insert([{ conversation_id: conversationId, role: 'assistant', content: finalAssistantResponse }])
     .select('id')
     .single();
@@ -293,7 +294,7 @@ ${toolResultText}` });
   } else {
     try {
       const assistantEmbedding = await generateEmbedding(finalAssistantResponse);
-      await supabase.from('messages').update({ embedding: assistantEmbedding }).eq('id', assistantRow.id);
+      await supabase.from('messages').update({ embedding: assistantEmbedding }).eq('id', (assistantRow as Pick<Message, 'id'>).id);
     } catch (error) {
       console.error('Failed to generate assistant embedding:', error);
     }

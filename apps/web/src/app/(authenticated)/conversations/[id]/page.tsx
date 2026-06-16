@@ -19,7 +19,7 @@ export default async function ConversationPage({ params }: Props) {
     .from('conversations')
     .select('id, title, agent_id')
     .eq('id', params.id)
-    .eq('user_id', user?.id)
+    .eq('user_id', user?.id ?? '')
     .single();
 
   if (conversationError || !conversation) {

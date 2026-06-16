@@ -45,7 +45,7 @@ export default async function OrgTraceExplorerPage({ params }: { params: { orgId
     .map((run) => {
       const trace = run.execution_trace ?? [];
       const steps = trace.length;
-      const tokens = trace.reduce((sum, step) => sum + (step?.metadata?.tokens ?? 0), 0);
+      const tokens = trace.reduce((sum: number, step: any) => sum + (step?.metadata?.tokens ?? 0), 0);
       return {
         id: run.id,
         label: run.id.slice(0, 8),
@@ -58,16 +58,16 @@ export default async function OrgTraceExplorerPage({ params }: { params: { orgId
 
   const maxSteps = Math.max(...tracePoints.map((point) => point.steps), 1);
   const totalTokens = orgRuns.reduce(
-    (sum, run) => sum + ((run.execution_trace ?? []).reduce((inner, step) => inner + (step?.metadata?.tokens ?? 0), 0) ?? 0),
+    (sum, run) => sum + ((run.execution_trace ?? []).reduce((inner: number, step: any) => inner + (step?.metadata?.tokens ?? 0), 0) ?? 0),
     0
   );
-  const totalSteps = orgRuns.reduce((sum, run) => sum + (run.execution_trace ?? []).length, 0);
+  const totalSteps = orgRuns.reduce((sum: number, run: any) => sum + (run.execution_trace ?? []).length, 0);
   const averageSteps = totalRuns ? Math.round(totalSteps / totalRuns) : 0;
   const averageTokens = totalRuns ? Math.round(totalTokens / totalRuns) : 0;
   const uniqueTools = Array.from(
     new Set(
       orgRuns
-        .flatMap((run) => (run.execution_trace ?? []).flatMap((step) => (step?.metadata?.toolName ? [step.metadata.toolName] : [])))
+        .flatMap((run) => (run.execution_trace ?? []).flatMap((step: any) => (step?.metadata?.toolName ? [step.metadata.toolName] : [])))
         .filter(Boolean)
     )
   );
@@ -89,10 +89,10 @@ export default async function OrgTraceExplorerPage({ params }: { params: { orgId
             ) : (
               orgRuns.map((run) => {
                 const trace = run.execution_trace ?? [];
-                const tokens = trace.reduce((sum, step) => sum + (step?.metadata?.tokens ?? 0), 0);
+                const tokens = trace.reduce((sum: number, step: any) => sum + (step?.metadata?.tokens ?? 0), 0);
                 const tools = Array.from(
                   new Set(
-                    trace.flatMap((step) => (step?.metadata?.toolName ? [step.metadata.toolName] : [])).filter(Boolean)
+                    trace.flatMap((step: any) => (step?.metadata?.toolName ? [step.metadata.toolName] : [])).filter(Boolean)
                   )
                 );
 

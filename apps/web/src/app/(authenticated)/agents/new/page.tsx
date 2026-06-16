@@ -7,7 +7,7 @@ import type { Database } from '@/types/database';
 async function createAgent(formData: FormData) {
   'use server';
 
-  const supabase = createServerComponentSupabaseClient<Database>({ headers, cookies });
+  const supabase = createServerComponentSupabaseClient({ headers, cookies });
   const name = formData.get('name')?.toString() ?? '';
   const description = formData.get('description')?.toString() ?? '';
   const system_prompt = formData.get('system_prompt')?.toString() ?? '';

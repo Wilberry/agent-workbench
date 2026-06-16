@@ -1,8 +1,7 @@
 import { createServerSupabaseClient } from '@agent-workbench/sdk';
-import { cookies } from 'next/headers';
 
 export async function GET(_req: Request, { params }: { params: { runId: string } }) {
-  const supabase = createServerSupabaseClient({ cookies });
+  const supabase = createServerSupabaseClient();
   const runId = params.runId;
 
   try {

@@ -11,7 +11,7 @@ type Props = {
 };
 
 export default async function AgentPage({ params }: Props) {
-  const supabase = createServerComponentSupabaseClient<Database>({ headers, cookies });
+  const supabase = createServerComponentSupabaseClient({ headers, cookies });
   const {
     data: { user }
   } = await supabase.auth.getUser();
@@ -30,7 +30,7 @@ export default async function AgentPage({ params }: Props) {
     .from('conversations')
     .select('id')
     .eq('agent_id', agent.id)
-    .eq('user_id', user?.id)
+    .eq('user_id', user?.id ?? '')
     .limit(1)
     .single();
 
@@ -40,13 +40,14 @@ export default async function AgentPage({ params }: Props) {
     const { data: createdConversation, error: conversationError } = await supabase
       .from('conversations')
       .insert([{ agent_id: agent.id, user_id: user?.id, title: `${agent.name} chat` }])
+      .select('id')
       .single();
 
     if (conversationError || !createdConversation) {
       return <div className="p-6 text-red-400">Unable to create conversation.</div>;
     }
 
-    conversationId = createdConversation.id;
+    conversationId = (createdConversation as { id: string }).id;
   }
 
   return (

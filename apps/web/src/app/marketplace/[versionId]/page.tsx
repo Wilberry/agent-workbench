@@ -1,6 +1,8 @@
 import { marketplace } from '@agent-workbench/sdk';
 import Link from 'next/link';
 
+export const dynamic = 'force-dynamic';
+
 type Props = { params: { versionId: string } };
 
 export default async function MarketAgentDetail({ params }: Props) {

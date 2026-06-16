@@ -29,11 +29,12 @@ export type AgentWorkflowResult = {
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-if (!OPENAI_API_KEY) {
-  throw new Error('OPENAI_API_KEY is required for multi-agent workflows');
-}
 
 export async function callOpenAI(messages: Array<{ role: string; content: string }>, model = 'gpt-4o-mini') {
+  if (!OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY is required for multi-agent workflows');
+  }
+
   const res = await fetch(OPENAI_URL, {
     method: 'POST',
     headers: {

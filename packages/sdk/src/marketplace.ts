@@ -14,7 +14,7 @@ export const marketplace = {
       .limit(limit);
 
     if (error) throw error;
-    return data ?? [];
+    return (data ?? []) as any[];
   },
 
   async getAgentVersion(versionId: string, client?: SupabaseClient<Database>) {
@@ -25,6 +25,6 @@ export const marketplace = {
       .eq('id', versionId)
       .single();
     if (error) throw error;
-    return data;
+    return data as any;
   }
 };
