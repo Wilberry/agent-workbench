@@ -11,7 +11,7 @@ export const orgs = {
     const supabase = client ?? createServerSupabaseClient();
 
     const { data, error } = await supabase
-      .from<Organization>('organizations')
+      .from('organizations')
       .insert([{ ...org, owner_id: userId }])
       .select('*')
       .single();
@@ -26,9 +26,9 @@ export const orgs = {
     const supabase = client ?? createServerSupabaseClient();
 
     const { data, error } = await supabase
-      .from<Organization>('organizations')
-      .select('*, organization_memberships(user_id, role)')
-      .eq('organization_memberships.user_id', userId);
+      .from('organizations')
+      .select('*')
+      .eq('owner_id', userId);
 
     if (error) throw error;
     return data ?? [];
@@ -36,7 +36,7 @@ export const orgs = {
 
   async getOrg(orgId: string, client?: SupabaseClient<Database>) {
     const supabase = client ?? createServerSupabaseClient();
-    const { data, error } = await supabase.from<Organization>('organizations').select('*').eq('id', orgId).single();
+    const { data, error } = await supabase.from('organizations').select('*').eq('id', orgId).single();
     if (error) throw error;
     return data;
   },
@@ -67,7 +67,7 @@ export const orgs = {
   async listOrgMarketplaceAgents(orgId: string, client?: SupabaseClient<Database>) {
     const supabase = client ?? createServerSupabaseClient();
     const { data, error } = await supabase
-      .from<MarketplaceAgent>('marketplace_agents')
+      .from('marketplace_agents')
       .select('*')
       .eq('org_id', orgId)
       .order('created_at', { ascending: false });
@@ -78,7 +78,7 @@ export const orgs = {
   async publishMarketplaceAgent(agentId: string, visibility: 'public' | 'private', client?: SupabaseClient<Database>) {
     const supabase = client ?? createServerSupabaseClient();
     const { data, error } = await supabase
-      .from<MarketplaceAgent>('marketplace_agents')
+      .from('marketplace_agents')
       .update({ visibility })
       .eq('id', agentId)
       .select('*')
@@ -89,20 +89,26 @@ export const orgs = {
 
   async getBilling(orgId: string, client?: SupabaseClient<Database>) {
     const supabase = client ?? createServerSupabaseClient();
-    const { data, error } = await supabase.from<OrgBilling>('org_billing').select('*').eq('org_id', orgId).single();
+    const { data, error } = await supabase.from('org_billing').select('*').eq('org_id', orgId).single();
     if (error) throw error;
     return data;
   },
 
   async recordRunUsage(orgId: string, options: { tokensUsed?: number; runsUsed?: number } = {}, client?: SupabaseClient<Database>) {
     const supabase = client ?? createServerSupabaseClient();
-    const updates = {
-      tokens_used: (options.tokensUsed ?? 0) > 0 ? supabase.raw('tokens_used + ?', options.tokensUsed) : undefined,
-      runs_used: (options.runsUsed ?? 0) > 0 ? supabase.raw('runs_used + ?', options.runsUsed) : undefined
-    } as any;
+    const updates: { tokens_used?: number; runs_used?: number } = {};
+    if ((options.tokensUsed ?? 0) > 0) updates.tokens_used = options.tokensUsed;
+    if ((options.runsUsed ?? 0) > 0) updates.runs_used = options.runsUsed;
+
+    if (Object.keys(updates).length === 0) {
+      const { data, error } = await supabase.from('org_billing').select('*').eq('org_id', orgId).single();
+      if (error) throw error;
+      if (!data) throw new Error('Billing record not found');
+      return data;
+    }
 
     const { data, error } = await supabase
-      .from<OrgBilling>('org_billing')
+      .from('org_billing')
       .update(updates)
       .eq('org_id', orgId)
       .select('*')
@@ -114,7 +120,7 @@ export const orgs = {
 
   async checkQuota(orgId: string, client?: SupabaseClient<Database>) {
     const supabase = client ?? createServerSupabaseClient();
-    const { data, error } = await supabase.from<OrgBilling>('org_billing').select('*').eq('org_id', orgId).single();
+    const { data, error } = await supabase.from('org_billing').select('*').eq('org_id', orgId).single();
     if (error) throw error;
     if (!data) throw new Error('Billing record not found');
     if (data.plan === 'free' && data.runs_used >= 5) {

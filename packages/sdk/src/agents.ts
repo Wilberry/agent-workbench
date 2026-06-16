@@ -11,7 +11,7 @@ export const agents = {
   ) {
     const supabase = client ?? createServerSupabaseClient();
     const { data, error } = await supabase
-      .from<Agent>('agents')
+      .from('agents')
       .insert([
         {
           user_id: userId,
@@ -30,7 +30,7 @@ export const agents = {
   async list(userId: string, client?: SupabaseClient<Database>) {
     const supabase = client ?? createServerSupabaseClient();
     const { data, error } = await supabase
-      .from<Agent>('agents')
+      .from('agents')
       .select('*')
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
@@ -42,7 +42,7 @@ export const agents = {
   async get(agentId: string, client?: SupabaseClient<Database>) {
     const supabase = client ?? createServerSupabaseClient();
     const { data, error } = await supabase
-      .from<Agent>('agents')
+      .from('agents')
       .select('*')
       .eq('id', agentId)
       .single();
@@ -58,7 +58,7 @@ export const agents = {
   ) {
     const supabase = client ?? createServerSupabaseClient();
     const { data, error } = await supabase
-      .from<Agent>('agents')
+      .from('agents')
       .update(updates)
       .eq('id', agentId)
       .select('*')
@@ -70,7 +70,7 @@ export const agents = {
 
   async delete(agentId: string, client?: SupabaseClient<Database>) {
     const supabase = client ?? createServerSupabaseClient();
-    const { error } = await supabase.from<Agent>('agents').delete().eq('id', agentId);
+    const { error } = await supabase.from('agents').delete().eq('id', agentId);
     if (error) throw error;
     return true;
   }

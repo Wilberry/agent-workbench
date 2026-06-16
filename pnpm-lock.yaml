@@ -112,6 +112,10 @@ importers:
       '@supabase/supabase-js':
         specifier: ^2.35.0
         version: 2.108.1
+    devDependencies:
+      '@types/node':
+        specifier: ^20.11.0
+        version: 20.19.43
 
   packages/ui: {}
 

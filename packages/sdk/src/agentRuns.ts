@@ -18,7 +18,7 @@ export const agentRuns = {
     const supabase = client ?? createServerSupabaseClient();
 
     const { data, error } = await supabase
-      .from<AgentRun>('agent_runs')
+      .from('agent_runs')
       .insert([
         {
           user_id: options.userId,
@@ -39,7 +39,7 @@ export const agentRuns = {
     const supabase = client ?? createServerSupabaseClient();
 
     const { data, error } = await supabase
-      .from<AgentRun>('agent_runs')
+      .from('agent_runs')
       .select('*')
       .eq('id', runId)
       .single();
@@ -52,7 +52,7 @@ export const agentRuns = {
     const supabase = client ?? createServerSupabaseClient();
 
     const { data, error } = await supabase
-      .from<AgentRun>('agent_runs')
+      .from('agent_runs')
       .select('*')
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: false });
@@ -65,7 +65,7 @@ export const agentRuns = {
     const supabase = client ?? createServerSupabaseClient();
 
     const { data, error } = await supabase
-      .from<AgentRun>('agent_runs')
+      .from('agent_runs')
       .select('*')
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
@@ -79,7 +79,7 @@ export const agentRuns = {
     const supabase = client ?? createServerSupabaseClient();
 
     const { data, error } = await supabase
-      .from<AgentRun>('agent_runs')
+      .from('agent_runs')
       .select('*')
       .eq('organization_id', orgId)
       .order('created_at', { ascending: false })
@@ -93,7 +93,7 @@ export const agentRuns = {
     const supabase = client ?? createServerSupabaseClient();
 
     const { data, error } = await supabase
-      .from<AgentRun>('agent_runs')
+      .from('agent_runs')
       .select('id, status, current_step, created_at, execution_trace')
       .eq('id', runId)
       .maybeSingle();

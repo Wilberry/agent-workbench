@@ -7,7 +7,7 @@ export const conversations = {
   async create(agentId: string, userId: string, title?: string, client?: SupabaseClient<Database>) {
     const supabase = client ?? createServerSupabaseClient();
     const { data, error } = await supabase
-      .from<Conversation>('conversations')
+      .from('conversations')
       .insert([{ agent_id: agentId, user_id: userId, title: title ?? null }])
       .single();
 
@@ -18,7 +18,7 @@ export const conversations = {
   async list(agentId: string, userId: string, client?: SupabaseClient<Database>) {
     const supabase = client ?? createServerSupabaseClient();
     const { data, error } = await supabase
-      .from<Conversation>('conversations')
+      .from('conversations')
       .select('*')
       .eq('agent_id', agentId)
       .eq('user_id', userId)
@@ -31,7 +31,7 @@ export const conversations = {
   async listMessages(conversationId: string, client?: SupabaseClient<Database>) {
     const supabase = client ?? createServerSupabaseClient();
     const { data, error } = await supabase
-      .from<Message>('messages')
+      .from('messages')
       .select('*')
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: true });
@@ -48,7 +48,7 @@ export const conversations = {
   ) {
     const supabase = client ?? createServerSupabaseClient();
     const { data, error } = await supabase
-      .from<Message>('messages')
+      .from('messages')
       .insert([{ conversation_id: conversationId, role, content }])
       .single();
 
