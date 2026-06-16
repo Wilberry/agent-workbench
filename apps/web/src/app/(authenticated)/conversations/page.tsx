@@ -17,10 +17,12 @@ export default async function ConversationsPage() {
   } = await supabase.auth.getUser();
 
   const { data: conversations, error } = await supabase
-    .from<ConversationWithAgent>('conversations')
+    .from('conversations')
     .select('id, title, agent_id, created_at, agents(id, name)')
-    .eq('user_id', user?.id)
+    .eq('user_id', user?.id ?? '')
     .order('created_at', { ascending: false });
+
+  const typedConversations = (conversations ?? []) as ConversationWithAgent[];
 
   if (error) {
     return (
@@ -52,7 +54,7 @@ export default async function ConversationsPage() {
         </div>
 
         <div className="space-y-4">
-          {(conversations ?? []).map((conversation) => {
+          {typedConversations.map((conversation) => {
             const agentName = conversation.agent?.[0]?.name ?? conversation.agent_id;
             return (
               <Link
@@ -67,7 +69,7 @@ export default async function ConversationsPage() {
             );
           })}
 
-          {(conversations ?? []).length === 0 ? (
+          {typedConversations.length === 0 ? (
             <div className="rounded-3xl border border-slate-700 bg-slate-900 p-6 text-slate-400">
               No conversations yet. Start a chat by opening one of your agents.
             </div>

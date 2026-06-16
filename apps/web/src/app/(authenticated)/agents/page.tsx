@@ -12,8 +12,10 @@ export default async function AgentsPage({ searchParams }: { searchParams: { suc
   const { data: agents } = await supabase
     .from('agents')
     .select('id, name, description, created_at')
-    .eq('user_id', user?.id)
+    .eq('user_id', user?.id ?? '')
     .order('created_at', { ascending: false });
+
+  const typedAgents = (agents ?? []) as Array<{ id: string; name: string; description: string | null; created_at: string }>;
 
   const successMessage = searchParams.success ? 'Agent created successfully!' : null;
 
@@ -48,7 +50,7 @@ export default async function AgentsPage({ searchParams }: { searchParams: { suc
         ) : null}
 
         <div className="space-y-4">
-          {(agents ?? []).map((agent) => (
+          {typedAgents.map((agent) => (
             <div key={agent.id} className="rounded-3xl border border-slate-700 bg-slate-900 p-6 transition hover:border-slate-500">
               <Link href={`/agents/${agent.id}`} className="block">
                 <div className="text-xl font-semibold">{agent.name}</div>
@@ -71,7 +73,7 @@ export default async function AgentsPage({ searchParams }: { searchParams: { suc
             </div>
           ))}
 
-          {(agents ?? []).length === 0 ? (
+          {typedAgents.length === 0 ? (
             <div className="rounded-3xl border border-slate-700 bg-slate-900 p-6 text-slate-400">
               You have no agents yet. Create one from the button above.
             </div>

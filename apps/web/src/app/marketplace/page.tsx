@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { marketplace } from '@agent-workbench/sdk';
 
+export const dynamic = 'force-dynamic';
+
 export default async function MarketplacePage() {
   const list = await marketplace.listPublicAgentVersions(50);
 

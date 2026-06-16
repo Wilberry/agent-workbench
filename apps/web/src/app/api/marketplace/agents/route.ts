@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@agent-workbench/sdk';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   const supabase = createServerSupabaseClient();
 

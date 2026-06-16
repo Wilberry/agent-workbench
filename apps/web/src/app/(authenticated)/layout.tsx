@@ -5,6 +5,8 @@ import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-next
 import type { Database } from '@/types/database';
 import SignOutButton from '@/components/SignOutButton';
 
+export const dynamic = 'force-dynamic';
+
 export default async function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
   const supabase = createServerComponentSupabaseClient<Database>({ headers, cookies });
   const { data } = await supabase.auth.getSession();

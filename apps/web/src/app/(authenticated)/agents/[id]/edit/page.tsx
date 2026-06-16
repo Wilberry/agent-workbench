@@ -8,7 +8,7 @@ import type { Agent } from '@agent-workbench/sdk';
 async function updateAgent(formData: FormData, agentId: string) {
   'use server';
 
-  const supabase = createServerComponentSupabaseClient<Database>({ headers, cookies });
+  const supabase = createServerComponentSupabaseClient({ headers, cookies });
   const name = formData.get('name')?.toString() ?? '';
   const description = formData.get('description')?.toString() ?? '';
   const system_prompt = formData.get('system_prompt')?.toString() ?? '';
@@ -47,7 +47,7 @@ async function updateAgent(formData: FormData, agentId: string) {
 async function deleteAgent(_: FormData, agentId: string) {
   'use server';
 
-  const supabase = createServerComponentSupabaseClient<Database>({ headers, cookies });
+  const supabase = createServerComponentSupabaseClient({ headers, cookies });
   const {
     data: { user }
   } = await supabase.auth.getUser();
@@ -82,13 +82,15 @@ export default async function EditAgentPage({ params }: Props) {
   }
 
   const { data: agent, error } = await supabase
-    .from<Agent>('agents')
+    .from('agents')
     .select('id, name, description, system_prompt, model')
     .eq('id', params.id)
     .eq('user_id', user.id)
     .single();
 
-  if (error || !agent) {
+  const typedAgent = agent as Agent | null;
+
+  if (error || !typedAgent) {
     return <div className="p-6 text-red-400">Agent not found.</div>;
   }
 
@@ -98,11 +100,11 @@ export default async function EditAgentPage({ params }: Props) {
         <div className="rounded-3xl border border-slate-700 bg-slate-900 p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h1 className="text-3xl font-semibold">Edit {agent.name}</h1>
+              <h1 className="text-3xl font-semibold">Edit {typedAgent.name}</h1>
               <p className="text-slate-400">Update this agent&apos;s prompt, description, and model.</p>
             </div>
             <a
-              href={`/agents/${agent.id}`}
+              href={`/agents/${typedAgent.id}`}
               className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-semibold text-slate-200 hover:border-emerald-500"
             >
               Back to agent
@@ -115,7 +117,7 @@ export default async function EditAgentPage({ params }: Props) {
             <label className="block text-sm font-semibold text-slate-200">Name</label>
             <input
               name="name"
-              defaultValue={agent.name}
+              defaultValue={typedAgent.name}
               required
               className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-emerald-500"
             />
@@ -125,7 +127,7 @@ export default async function EditAgentPage({ params }: Props) {
             <label className="block text-sm font-semibold text-slate-200">Description</label>
             <textarea
               name="description"
-              defaultValue={agent.description ?? undefined}
+              defaultValue={typedAgent.description ?? undefined}
               className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-emerald-500"
               rows={3}
             />
@@ -135,7 +137,7 @@ export default async function EditAgentPage({ params }: Props) {
             <label className="block text-sm font-semibold text-slate-200">System prompt</label>
             <textarea
               name="system_prompt"
-              defaultValue={agent.system_prompt}
+              defaultValue={typedAgent.system_prompt}
               required
               className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-emerald-500"
               rows={6}
@@ -146,7 +148,7 @@ export default async function EditAgentPage({ params }: Props) {
             <label className="block text-sm font-semibold text-slate-200">Model</label>
             <input
               name="model"
-              defaultValue={agent.model}
+              defaultValue={typedAgent.model}
               className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-emerald-500"
             />
           </div>
