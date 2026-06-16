@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { cookies } from 'next/headers';
 import type { Database } from '@/types/database';
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
@@ -52,8 +53,18 @@ export default async function AgentPage({ params }: Props) {
     <main className="min-h-screen bg-slate-950 text-white p-6">
       <div className="mx-auto max-w-5xl space-y-6">
         <div className="rounded-3xl border border-slate-700 bg-slate-900 p-6">
-          <h1 className="text-3xl font-semibold">{agent.name}</h1>
-          <p className="mt-2 text-slate-400">Chat with your agent powered by the configured model.</p>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h1 className="text-3xl font-semibold">{agent.name}</h1>
+              <p className="mt-2 text-slate-400">Chat with your agent powered by the configured model.</p>
+            </div>
+            <Link
+              href={`/agents/${agent.id}/edit`}
+              className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-semibold text-slate-200 hover:border-emerald-500"
+            >
+              Edit agent
+            </Link>
+          </div>
         </div>
 
         <AgentChat

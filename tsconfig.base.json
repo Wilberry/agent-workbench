@@ -13,7 +13,9 @@
     "baseUrl": ".",
     "paths": {
       "@agent-workbench/sdk": ["packages/sdk/src"],
-      "@agent-workbench/agent-runtime": ["packages/agent-runtime/src"]
+      "@agent-workbench/sdk/*": ["packages/sdk/src/*"],
+      "@agent-workbench/agent-runtime": ["packages/agent-runtime/src"],
+      "@agent-workbench/agent-runtime/*": ["packages/agent-runtime/src/*"]
     }
   }
 }

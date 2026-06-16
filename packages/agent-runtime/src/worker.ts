@@ -1,13 +1,17 @@
 import { createServerSupabaseClient } from '@agent-workbench/sdk';
 import { callOpenAI } from './agentRouter';
 import { runTool } from './tools';
+import { generateEmbedding } from './embeddings';
 import { randomUUID } from 'crypto';
 import {
-  type WorkflowExecutionStep,
   type AgentRunQueueJob,
   persistExecutionStep,
   markRunCompleted,
   markRunFailed,
+  markQueueJobCompleted,
+  markQueueJobFailed,
+  incrementAttemptsAndMaybeDead,
+  reclaimStaleJobs,
   setProcessing,
   type ExecutionStep
 } from './queue';
@@ -88,6 +92,30 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
     const existingTrace = (existingRun?.execution_trace as Array<Record<string, unknown>>) || [];
     let currentStep = existingRun?.current_step || 0;
 
+    const { data: conversation, error: conversationError } = await supabase
+      .from('conversations')
+      .select('agent_id')
+      .eq('id', job.conversationId)
+      .single();
+
+    if (conversationError || !conversation) {
+      throw new Error(`Conversation not found for id ${job.conversationId}`);
+    }
+
+    const { data: agent, error: agentError } = await supabase
+      .from('agents')
+      .select('name, system_prompt, model')
+      .eq('id', conversation.agent_id)
+      .single();
+
+    if (agentError) {
+      throw new Error(`Failed to load agent configuration: ${agentError.message}`);
+    }
+
+    const agentName = agent?.name ?? 'AI agent';
+    const baseAgentPrompt = agent?.system_prompt ? `Agent prompt:\n${agent.system_prompt}\n\n` : '';
+    const agentModel = (agent?.model as string | undefined) ?? 'gpt-4o-mini';
+
     // Update status to running
     await supabase.from('agent_runs').update({ status: 'running' }).eq('id', runId);
 
@@ -95,6 +123,7 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
     const episode: string[] = [];
     let allToolsCalled: string[] = [];
     let totalIterations = 0;
+    let lastAgentOutput = '';
 
     // Resume from current_step in case of restart
     for (let stepIndex = currentStep; stepIndex < workflow.length; stepIndex += 1) {
@@ -110,11 +139,13 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
           const rolePrompt = [
             {
               role: 'system',
-              content: `You are ${role}. ${roleDescription(role)} Use available memory and tools when appropriate.`
+              content: `${baseAgentPrompt}You are ${role}. ${roleDescription(role)} Use available memory and tools when appropriate.`
             },
             {
               role: 'user',
-              content: `User task: ${message}
+              content: `Agent: ${agentName}
+
+User task: ${message}
 
 Memory context:
 ${memoryContext}
@@ -126,7 +157,7 @@ Respond with your assigned role output.`
             }
           ];
 
-          let agentOutput = await callOpenAI(rolePrompt);
+          let agentOutput = await callOpenAI(rolePrompt, agentModel);
           modelIterations += 1;
           totalIterations += 1;
           let finalOutput = agentOutput;
@@ -150,12 +181,13 @@ ${JSON.stringify(toolResult, null, 2)}`
               }
             ];
 
-            finalOutput = await callOpenAI(toolPrompt);
+            finalOutput = await callOpenAI(toolPrompt, agentModel);
             modelIterations += 1;
             totalIterations += 1;
           }
 
           episode.push(`${role.toUpperCase()} OUTPUT:\n${finalOutput}`);
+          lastAgentOutput = finalOutput;
 
           // Build rich execution step and persist it (this will also broadcast via Supabase)
           const execStep: ExecutionStep = {
@@ -214,6 +246,7 @@ ${JSON.stringify(toolResult, null, 2)}`
 
         await persistExecutionStep(runId, errorExecStep);
         await markRunFailed(runId, `Step ${stepIndex} (${role}) failed after ${MAX_RETRIES} retries: ${stepError}`);
+        await markQueueJobFailed(runId, stepError ?? `Step ${stepIndex} (${role}) failed`);
         setProcessing(runId, false);
         throw new Error(`Workflow failed at step ${stepIndex}`);
       }
@@ -221,13 +254,41 @@ ${JSON.stringify(toolResult, null, 2)}`
       currentStep = stepIndex + 1;
     }
 
+    // Persist the final assistant response to conversation history
+    if (lastAgentOutput) {
+      const { data: assistantRow, error: assistantError } = await supabase
+        .from('messages')
+        .insert([{ conversation_id: job.conversationId, role: 'assistant', content: lastAgentOutput }])
+        .select('id')
+        .single();
+
+      if (assistantError || !assistantRow) {
+        console.error('Failed to persist assistant message:', assistantError);
+      } else {
+        try {
+          const assistantEmbedding = await generateEmbedding(lastAgentOutput);
+          await supabase.from('messages').update({ embedding: assistantEmbedding }).eq('id', assistantRow.id);
+        } catch (error) {
+          console.error('Failed to generate assistant embedding:', error);
+        }
+      }
+    }
+
     // Mark complete
     await markRunCompleted(runId);
+    await markQueueJobCompleted(runId);
     setProcessing(runId, false);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error('Workflow execution failed:', errorMessage);
-    setProcessing(runId, false);
+    try {
+      const { attempts, maxAttempts, isDead } = await incrementAttemptsAndMaybeDead(runId, errorMessage);
+      if (isDead) {
+        await markRunFailed(runId, `Job failed after ${attempts}/${maxAttempts} attempts: ${errorMessage}`);
+      }
+    } catch (qErr) {
+      console.warn('Failed to update job attempts/queue state:', qErr);
+    }
     throw error;
   }
 }
@@ -240,6 +301,8 @@ export async function startBackgroundWorker(): Promise<void> {
       try {
         const job = await dequeueAgentRun();
         if (!job) {
+          // no jobs - attempt to reclaim any stale jobs periodically
+          await reclaimStaleJobs().catch(() => {});
           await sleep(1000);
           continue;
         }
