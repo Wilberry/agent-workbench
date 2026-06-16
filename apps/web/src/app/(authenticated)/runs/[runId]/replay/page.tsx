@@ -1,12 +1,12 @@
 import RunDetailClient from '@/components/RunDetailClient';
 import ReplayPlayer from '@/components/ReplayPlayer';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-nextjs';
 import type { Database } from '@/types/database';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { agentRuns } from '@agent-workbench/sdk';
 
 export default async function RunReplayPage({ params }: { params: { runId: string } }) {
-  const supabase = createServerComponentClient<Database>({ cookies });
+  const supabase = createServerComponentSupabaseClient<Database>({ headers, cookies });
   const {
     data: { user }
   } = await supabase.auth.getUser();
@@ -51,3 +51,4 @@ export default async function RunReplayPage({ params }: { params: { runId: strin
     </main>
   );
 }
+

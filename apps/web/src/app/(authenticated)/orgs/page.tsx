@@ -1,10 +1,10 @@
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-nextjs';
+import { cookies, headers } from 'next/headers';
 import Link from 'next/link';
 import type { Database } from '@/types/database';
 
 export default async function OrgsPage() {
-  const supabase = createServerComponentClient<Database>({ cookies });
+  const supabase = createServerComponentSupabaseClient<Database>({ headers, cookies });
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {

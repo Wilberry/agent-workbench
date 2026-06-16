@@ -1,10 +1,10 @@
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import Link from 'next/link';
 import type { Database } from '@/types/database';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-nextjs';
 
 export default async function OrgAgentsPage({ params }: { params: { orgId: string } }) {
-  const supabase = createServerComponentClient<Database>({ cookies });
+  const supabase = createServerComponentSupabaseClient<Database>({ headers, cookies });
   const { data: agents, error } = await supabase
     .from('agents')
     .select('*')
@@ -32,3 +32,4 @@ export default async function OrgAgentsPage({ params }: { params: { orgId: strin
     </div>
   );
 }
+

@@ -1,12 +1,12 @@
 import Link from 'next/link';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-nextjs';
 import type { Database } from '@/types/database';
 import SignOutButton from '@/components/SignOutButton';
 
 export default async function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
-  const supabase = createServerComponentClient<Database>({ cookies });
+  const supabase = createServerComponentSupabaseClient<Database>({ headers, cookies });
   const { data } = await supabase.auth.getSession();
 
   if (!data.session) {

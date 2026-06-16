@@ -1,13 +1,13 @@
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-nextjs';
 import type { Database } from '@/types/database';
 
 async function createAgent(formData: FormData) {
   'use server';
 
-  const supabase = createServerComponentClient<Database>({ cookies });
+  const supabase = createServerComponentSupabaseClient<Database>({ headers, cookies });
   const name = formData.get('name')?.toString() ?? '';
   const description = formData.get('description')?.toString() ?? '';
   const system_prompt = formData.get('system_prompt')?.toString() ?? '';

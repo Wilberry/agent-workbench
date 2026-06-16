@@ -1,5 +1,5 @@
-import { cookies } from 'next/headers';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { cookies, headers } from 'next/headers';
+import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-nextjs';
 import type { Database } from '@/types/database';
 import AgentChat from '@/components/AgentChat';
 
@@ -10,7 +10,7 @@ type Props = {
 };
 
 export default async function ConversationPage({ params }: Props) {
-  const supabase = createServerComponentClient<Database>({ cookies });
+  const supabase = createServerComponentSupabaseClient<Database>({ headers, cookies });
   const {
     data: { user }
   } = await supabase.auth.getUser();
@@ -55,3 +55,4 @@ export default async function ConversationPage({ params }: Props) {
     </main>
   );
 }
+

@@ -1,7 +1,7 @@
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import Link from 'next/link';
 import type { Database } from '@/types/database';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-nextjs';
 import OrgTraceAnalytics from '@/components/OrgTraceAnalytics';
 
 type AgentRun = Database['public']['Tables']['agent_runs']['Row'];
@@ -15,7 +15,7 @@ type TracePoint = {
 };
 
 export default async function OrgTraceExplorerPage({ params }: { params: { orgId: string } }) {
-  const supabase = createServerComponentClient<Database>({ cookies });
+  const supabase = createServerComponentSupabaseClient<Database>({ headers, cookies });
   const { data: runs, error } = await supabase
     .from('agent_runs')
     .select('*')
@@ -127,3 +127,4 @@ export default async function OrgTraceExplorerPage({ params }: { params: { orgId
     </main>
   );
 }
+

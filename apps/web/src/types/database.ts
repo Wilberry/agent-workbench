@@ -38,6 +38,7 @@ export type Database = {
           conversation_id: string;
           role: 'user' | 'assistant';
           content: string;
+          embedding?: number[] | null;
           created_at: string;
         };
       };
@@ -99,9 +100,64 @@ export type Database = {
           updated_at: string;
         };
       };
+      agent_run_jobs: {
+        Row: {
+          id: string;
+          run_id: string;
+          user_id: string;
+          conversation_id: string;
+          message: string;
+          workflow: string[];
+          memories: Array<{ role: 'user' | 'assistant'; content: string; similarity: number }>;
+          status: 'pending' | 'running' | 'completed' | 'failed';
+          attempts: number;
+          max_attempts: number;
+          locked_at: string | null;
+          error_message: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+      };
     };
     Views: {};
-    Functions: {};
+    Functions: {
+      dequeue_agent_run_job: {
+        Args: Record<string, never>;
+        Returns: Array<{
+          id: string;
+          run_id: string;
+          user_id: string;
+          conversation_id: string;
+          message: string;
+          workflow: string[];
+          memories: Array<{ role: 'user' | 'assistant'; content: string; similarity: number }>;
+          status: 'pending' | 'running' | 'completed' | 'failed';
+          created_at: string;
+          updated_at: string;
+        }>;
+      };
+      reclaim_stale_agent_run_jobs: {
+        Args: {
+          lease_interval?: string;
+        };
+        Returns: Array<{
+          id: string;
+        }>;
+      };
+      match_messages: {
+        Args: {
+          query_embedding: number[];
+          match_threshold?: number | null;
+          match_count?: number | null;
+        };
+        Returns: Array<{
+          id: string;
+          conversation_id: string;
+          content: string;
+          similarity: number;
+        }>;
+      };
+    };
     Enums: {};
   };
 };

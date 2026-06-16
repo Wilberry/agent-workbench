@@ -1,6 +1,6 @@
 import Link from 'next/link';
-import { cookies } from 'next/headers';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { cookies, headers } from 'next/headers';
+import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-nextjs';
 import type { Database } from '@/types/database';
 
 type ConversationWithAgent = Database['public']['Tables']['conversations']['Row'] & {
@@ -11,7 +11,7 @@ type ConversationWithAgent = Database['public']['Tables']['conversations']['Row'
 };
 
 export default async function ConversationsPage() {
-  const supabase = createServerComponentClient<Database>({ cookies });
+  const supabase = createServerComponentSupabaseClient<Database>({ headers, cookies });
   const {
     data: { user }
   } = await supabase.auth.getUser();

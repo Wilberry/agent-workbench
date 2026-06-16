@@ -1,13 +1,13 @@
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-nextjs';
 import type { Database } from '@/types/database';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { tools } from '@agent-workbench/sdk';
 import Link from 'next/link';
 
 type Props = { params: { id: string } };
 
 export default async function ToolDetailPage({ params }: Props) {
-  const supabase = createServerComponentClient<Database>({ cookies });
+  const supabase = createServerComponentSupabaseClient<Database>({ headers, cookies });
   const {
     data: { user }
   } = await supabase.auth.getUser();
@@ -41,3 +41,4 @@ export default async function ToolDetailPage({ params }: Props) {
     </main>
   );
 }
+

@@ -1,10 +1,10 @@
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-nextjs';
+import { cookies, headers } from 'next/headers';
 import type { Database } from '@/types/database';
 import MarketplaceList from '@/components/MarketplaceList';
 
 export default async function OrgMarketplacePage({ params }: { params: { orgId: string } }) {
-  const supabase = createServerComponentClient<Database>({ cookies });
+  const supabase = createServerComponentSupabaseClient<Database>({ headers, cookies });
   const { data: marketplaceItems, error } = await supabase
     .from('marketplace_agents')
     .select('*')
@@ -30,3 +30,4 @@ export default async function OrgMarketplacePage({ params }: { params: { orgId: 
     </div>
   );
 }
+

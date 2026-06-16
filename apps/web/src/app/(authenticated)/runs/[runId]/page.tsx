@@ -1,7 +1,7 @@
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import Link from 'next/link';
 import type { Database } from '@/types/database';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-nextjs';
 import { agentRuns } from '@agent-workbench/sdk';
 import RunDetailClient from '../../../../components/RunDetailClient';
 
@@ -34,7 +34,7 @@ type AgentRun = {
 };
 
 export default async function RunDetailPage({ params }: Params) {
-  const supabase = createServerComponentClient<Database>({ cookies });
+  const supabase = createServerComponentSupabaseClient<Database>({ headers, cookies });
   const {
     data: { user }
   } = await supabase.auth.getUser();
@@ -217,3 +217,4 @@ export default async function RunDetailPage({ params }: Params) {
     </main>
   );
 }
+

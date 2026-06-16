@@ -1,14 +1,14 @@
 import Link from 'next/link';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-nextjs';
 import type { Database } from '@/types/database';
 import type { Agent } from '@agent-workbench/sdk';
 
 async function updateAgent(formData: FormData, agentId: string) {
   'use server';
 
-  const supabase = createServerComponentClient<Database>({ cookies });
+  const supabase = createServerComponentSupabaseClient<Database>({ headers, cookies });
   const name = formData.get('name')?.toString() ?? '';
   const description = formData.get('description')?.toString() ?? '';
   const system_prompt = formData.get('system_prompt')?.toString() ?? '';
@@ -47,7 +47,7 @@ async function updateAgent(formData: FormData, agentId: string) {
 async function deleteAgent(_: FormData, agentId: string) {
   'use server';
 
-  const supabase = createServerComponentClient<Database>({ cookies });
+  const supabase = createServerComponentSupabaseClient<Database>({ headers, cookies });
   const {
     data: { user }
   } = await supabase.auth.getUser();
@@ -72,7 +72,7 @@ type Props = {
 };
 
 export default async function EditAgentPage({ params }: Props) {
-  const supabase = createServerComponentClient<Database>({ cookies });
+  const supabase = createServerComponentSupabaseClient<Database>({ headers, cookies });
   const {
     data: { user }
   } = await supabase.auth.getUser();
@@ -172,3 +172,4 @@ export default async function EditAgentPage({ params }: Props) {
     </main>
   );
 }
+

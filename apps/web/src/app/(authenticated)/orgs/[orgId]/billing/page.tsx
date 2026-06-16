@@ -1,9 +1,9 @@
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import type { Database } from '@/types/database';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-nextjs';
 
 export default async function OrgBillingPage({ params }: { params: { orgId: string } }) {
-  const supabase = createServerComponentClient<Database>({ cookies });
+  const supabase = createServerComponentSupabaseClient<Database>({ headers, cookies });
   const { data: billing, error } = await supabase
     .from('org_billing')
     .select('*')
@@ -37,3 +37,4 @@ export default async function OrgBillingPage({ params }: { params: { orgId: stri
     </div>
   );
 }
+

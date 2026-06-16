@@ -1,8 +1,9 @@
 import type { NextRequest } from 'next/server';
-import { supabase } from '@agent-workbench/sdk/src/supabaseClient';
+import { createServerSupabaseClient } from '@agent-workbench/sdk/src/supabaseClient';
 
 export async function GET(_request: NextRequest, { params }: { params: { conversationId: string } }) {
   const { conversationId } = params;
+  const supabase = createServerSupabaseClient();
 
   const { data, error } = await supabase
     .from('messages')
