@@ -23,6 +23,11 @@ export async function createTestRun(): Promise<TestRunContext> {
     user_metadata: { test: true }
   });
 
+  console.log('DEBUG createTestRun createUser response', {
+    userData,
+    userError
+  });
+
   if (userError || !userData) {
     throw userError ?? new Error('Failed to create test auth user');
   }
