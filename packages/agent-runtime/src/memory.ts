@@ -13,6 +13,8 @@ export async function getRelevantMemories({ conversationId, query }: { conversat
   const supabase = createServerSupabaseClient();
   const queryEmbedding = await generateEmbedding(query);
 
+  console.log('DEBUG getRelevantMemories input', { conversationId, query });
+
   const { data, error } = await supabase.rpc('match_messages', {
     query_embedding: queryEmbedding,
     match_threshold: 0.75,
