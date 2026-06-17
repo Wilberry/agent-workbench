@@ -28,11 +28,11 @@ export async function createTestRun(): Promise<TestRunContext> {
     userError
   });
 
-  if (userError || !userData) {
+  if (userError || !userData || !userData.user) {
     throw userError ?? new Error('Failed to create test auth user');
   }
 
-  const user = userData as { id: string };
+  const user = userData.user;
 
   const { data: agent, error: agentError } = await supabase
     .from('agents')
