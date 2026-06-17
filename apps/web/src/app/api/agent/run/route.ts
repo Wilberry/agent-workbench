@@ -15,6 +15,8 @@ export async function POST(request: NextRequest) {
     const body = (await request.json()) as RunAgentBody;
     const { userId, agentId, conversationId, message, workflow } = body;
 
+    console.log('DEBUG API route POST body', { userId, agentId, conversationId, message, workflow });
+
     if (!userId || !agentId || !conversationId || !message) {
       return new Response(
         JSON.stringify({ error: 'userId, agentId, conversationId, and message are required' }),
