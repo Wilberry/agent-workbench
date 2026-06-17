@@ -34,6 +34,7 @@ describe('API route integration', () => {
     context = await createTestRun();
     const payload = {
       userId: context.userId,
+      agentId: context.agentId,
       conversationId: context.conversationId,
       message: 'Verify API route success case.',
       workflow: ['Planner', 'Executor', 'Reviewer']
