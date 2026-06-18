@@ -15,8 +15,6 @@ export async function POST(request: NextRequest) {
     const body = (await request.json()) as RunAgentBody;
     const { userId, agentId, conversationId, message, workflow } = body;
 
-    console.log('DEBUG API route POST body', { userId, agentId, conversationId, message, workflow });
-
     if (!userId || !agentId || !conversationId || !message) {
       return new Response(
         JSON.stringify({ error: 'userId, agentId, conversationId, and message are required' }),
@@ -34,6 +32,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (conversationError || !conversation) {
+      console.error('Invalid conversation for agent', { conversationError, conversation });
       return new Response(JSON.stringify({ error: 'Conversation does not belong to the provided agent' }), { status: 400 });
     }
 
@@ -44,6 +43,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (userMessageError || !userMessageRow) {
+      console.error('Failed to save user message', { userMessageError, userMessageRow });
       return new Response(JSON.stringify({ error: 'Failed to save user message' }), { status: 500 });
     }
 

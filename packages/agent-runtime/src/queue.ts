@@ -42,12 +42,6 @@ const processing = new Set<string>();
 export async function enqueueAgentRun(job: AgentRunQueueJob): Promise<string> {
   const supabase = createServerSupabaseClient();
 
-  console.log('DEBUG enqueueAgentRun input', {
-    userId: job.userId,
-    conversationId: job.conversationId,
-    workflow: job.workflow
-  });
-
   const { data: run, error: runError } = await supabase
     .from('agent_runs')
     .insert([
@@ -78,6 +72,7 @@ export async function enqueueAgentRun(job: AgentRunQueueJob): Promise<string> {
   ]);
 
   if (queueError) {
+    console.error('Failed to enqueue agent run job', { queueError, job });
     throw queueError;
   }
 
