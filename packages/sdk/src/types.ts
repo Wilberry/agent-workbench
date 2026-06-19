@@ -75,6 +75,13 @@ export type OrgBilling = {
   last_billed: string | null;
 };
 
+export type OrgTelemetry = {
+  total_runs: number;
+  total_tokens: number;
+  total_estimated_cost: number;
+  average_latency_ms: number;
+};
+
 export type AgentRun = {
   id: string;
   user_id: string;
@@ -201,11 +208,28 @@ export type Database = {
           timestamp?: string;
           metadata?: { model?: string; tokens?: number; toolName?: string } | null;
         }>;
+        input_tokens: number;
+        output_tokens: number;
+        total_tokens: number;
+        estimated_cost: number;
+        latency_ms: number;
+        model_name?: string | null;
         organization_id?: string | null;
         status: 'pending' | 'running' | 'completed' | 'failed';
         error_message?: string | null;
         created_at: string;
         updated_at: string;
+      }>;
+      tool_calls: SupabaseTable<{
+        id: string;
+        run_id: string;
+        organization_id?: string | null;
+        tool_name: string;
+        status: 'success' | 'failed';
+        latency_ms: number;
+        input_payload: Record<string, unknown>;
+        output_payload: Record<string, unknown>;
+        created_at: string;
       }>;
       agent_run_jobs: SupabaseTable<{
         id: string;

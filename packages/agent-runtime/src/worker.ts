@@ -1,5 +1,5 @@
 import { createServerSupabaseClient } from '@agent-workbench/sdk';
-import { callOpenAI } from './agentRouter';
+import { chatCompletion } from './llm/client';
 import { runTool } from './tools';
 import { generateEmbedding } from './embeddings';
 import { randomUUID } from 'crypto';
@@ -12,6 +12,7 @@ import {
   markQueueJobFailed,
   incrementAttemptsAndMaybeDead,
   reclaimStaleJobs,
+  updateRunTelemetry,
   setProcessing,
   type ExecutionStep
 } from './queue';
@@ -81,7 +82,7 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
     // Fetch current run to get existing trace (for recovery)
     const { data: existingRun, error: fetchError } = await supabase
       .from('agent_runs')
-      .select('execution_trace, current_step, status')
+      .select('execution_trace, current_step, status, organization_id')
       .eq('id', runId)
       .single();
 
@@ -97,6 +98,8 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
       .select('agent_id')
       .eq('id', job.conversationId)
       .single();
+
+    const organizationId = existingRun?.organization_id ?? null;
 
     if (conversationError || !conversation) {
       throw new Error(`Conversation not found for id ${job.conversationId}`);
@@ -124,6 +127,12 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
     let allToolsCalled: string[] = [];
     let totalIterations = 0;
     let lastAgentOutput = '';
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
+    let totalTokens = 0;
+    let totalEstimatedCost = 0;
+    let totalLatencyMs = 0;
+    let lastModelName: string | undefined;
 
     // Resume from current_step in case of restart
     for (let stepIndex = currentStep; stepIndex < workflow.length; stepIndex += 1) {
@@ -157,17 +166,40 @@ Respond with your assigned role output.`
             }
           ];
 
-          let agentOutput = await callOpenAI(rolePrompt, agentModel);
+          const agentResult = await chatCompletion({
+            model: agentModel,
+            messages: rolePrompt,
+            temperature: 0.7,
+            max_tokens: 1200
+          });
+          let agentOutput = agentResult.content;
           modelIterations += 1;
           totalIterations += 1;
           let finalOutput = agentOutput;
+          totalInputTokens += agentResult.prompt_tokens;
+          totalOutputTokens += agentResult.completion_tokens;
+          totalTokens += agentResult.total_tokens;
+          totalEstimatedCost += agentResult.estimated_cost;
+          totalLatencyMs += agentResult.latency_ms;
+          lastModelName = agentResult.model_name;
+          await updateRunTelemetry(runId, {
+            input_tokens: totalInputTokens,
+            output_tokens: totalOutputTokens,
+            total_tokens: totalTokens,
+            estimated_cost: totalEstimatedCost,
+            latency_ms: totalLatencyMs,
+            model_name: lastModelName
+          });
+
+          let stepTokens = agentResult.total_tokens;
+          let stepLatencyMs = agentResult.latency_ms;
 
           const toolCall = parseToolCall(agentOutput);
           if (toolCall) {
             toolsCalled.push(toolCall.name);
             allToolsCalled.push(toolCall.name);
 
-            const toolResult = await runTool(toolCall.name, toolCall.args);
+            const toolResult = await runTool(toolCall.name, toolCall.args, runId, organizationId);
             const toolPrompt = [
               ...rolePrompt,
               {
@@ -181,9 +213,31 @@ ${JSON.stringify(toolResult, null, 2)}`
               }
             ];
 
-            finalOutput = await callOpenAI(toolPrompt, agentModel);
+            const toolResultOutput = await chatCompletion({
+              model: agentModel,
+              messages: toolPrompt,
+              temperature: 0.7,
+              max_tokens: 1200
+            });
+            finalOutput = toolResultOutput.content;
             modelIterations += 1;
             totalIterations += 1;
+            totalInputTokens += toolResultOutput.prompt_tokens;
+            totalOutputTokens += toolResultOutput.completion_tokens;
+            totalTokens += toolResultOutput.total_tokens;
+            totalEstimatedCost += toolResultOutput.estimated_cost;
+            totalLatencyMs += toolResultOutput.latency_ms;
+            lastModelName = toolResultOutput.model_name;
+            await updateRunTelemetry(runId, {
+              input_tokens: totalInputTokens,
+              output_tokens: totalOutputTokens,
+              total_tokens: totalTokens,
+              estimated_cost: totalEstimatedCost,
+              latency_ms: totalLatencyMs,
+              model_name: lastModelName
+            });
+            stepTokens += toolResultOutput.total_tokens;
+            stepLatencyMs += toolResultOutput.latency_ms;
           }
 
           episode.push(`${role.toUpperCase()} OUTPUT:\n${finalOutput}`);
@@ -199,9 +253,10 @@ ${JSON.stringify(toolResult, null, 2)}`
             output: finalOutput,
             timestamp: new Date().toISOString(),
             metadata: {
-              model: undefined,
-              tokens: undefined,
-              toolName: toolsCalled[0]
+              model: lastModelName,
+              tokens: stepTokens,
+              toolName: toolsCalled[0],
+              latency_ms: stepLatencyMs
             }
           };
 
@@ -238,7 +293,7 @@ ${JSON.stringify(toolResult, null, 2)}`
           error: stepError || undefined,
           timestamp: new Date().toISOString(),
           metadata: {
-            model: undefined,
+            model: lastModelName,
             tokens: undefined,
             toolName: toolsCalled[0]
           }

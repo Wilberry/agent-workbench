@@ -28,6 +28,12 @@ type AgentRun = {
     timestamp: string;
     metadata?: { model?: string; tokens?: number; toolName?: string } | null;
   }>;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  estimated_cost: number;
+  latency_ms: number;
+  model_name?: string | null;
   status: 'pending' | 'running' | 'completed' | 'failed';
   error_message?: string | null;
   created_at: string;
@@ -117,6 +123,33 @@ export default async function RunDetailPage({ params }: Params) {
               <div className="text-slate-400">
                 Step {run.current_step} / {(run.workflow as string[]).length}
               </div>
+            </div>
+          </div>
+
+          <div className="mt-6 grid gap-4 sm:grid-cols-3">
+            <div className="rounded-3xl bg-slate-950 p-4">
+              <div className="text-sm text-slate-400">Model used</div>
+              <div className="mt-2 text-xl font-semibold text-white">{run.model_name ?? 'Unknown'}</div>
+            </div>
+            <div className="rounded-3xl bg-slate-950 p-4">
+              <div className="text-sm text-slate-400">Total tokens</div>
+              <div className="mt-2 text-xl font-semibold text-white">{run.total_tokens}</div>
+            </div>
+            <div className="rounded-3xl bg-slate-950 p-4">
+              <div className="text-sm text-slate-400">Estimated cost</div>
+              <div className="mt-2 text-xl font-semibold text-white">${run.estimated_cost.toFixed(4)}</div>
+            </div>
+            <div className="rounded-3xl bg-slate-950 p-4">
+              <div className="text-sm text-slate-400">Input tokens</div>
+              <div className="mt-2 text-xl font-semibold text-white">{run.input_tokens}</div>
+            </div>
+            <div className="rounded-3xl bg-slate-950 p-4">
+              <div className="text-sm text-slate-400">Output tokens</div>
+              <div className="mt-2 text-xl font-semibold text-white">{run.output_tokens}</div>
+            </div>
+            <div className="rounded-3xl bg-slate-950 p-4">
+              <div className="text-sm text-slate-400">Latency</div>
+              <div className="mt-2 text-xl font-semibold text-white">{run.latency_ms}ms</div>
             </div>
           </div>
 

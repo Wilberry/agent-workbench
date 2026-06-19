@@ -4,43 +4,20 @@ import { generateEmbedding } from './embeddings';
 import { getRelevantMemories } from './memory';
 import { runTool, toolList } from './tools';
 import { runMultiAgentWorkflow } from './agentRouter';
+import { chatCompletion } from './llm/client';
+import { updateRunTelemetry } from './queue';
 
 export type ExecutionTrace = {
   memoryUsed: boolean;
   toolsCalled: string[];
   modelIterations: number;
+  model_name?: string;
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+  estimated_cost?: number;
+  latency_ms?: number;
 };
-
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
-
-
-async function callOpenAI(model: string, messages: Array<{ role: string; content: string }>) {
-  if (!OPENAI_API_KEY) {
-    throw new Error('OPENAI_API_KEY is required for agent runtime');
-  }
-
-  const res = await fetch(OPENAI_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${OPENAI_API_KEY}`
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature: 0.7,
-      max_tokens: 1200
-    })
-  });
-
-  if (!res.ok) {
-    throw new Error(`OpenAI request failed: ${res.status} ${await res.text()}`);
-  }
-
-  const payload = await res.json();
-  return payload.choices?.[0]?.message?.content ?? '';
-}
 
 function formatMemoryContext(memories: Array<{ role: 'user' | 'assistant'; content: string; similarity: number }>) {
   if (memories.length === 0) {
@@ -100,12 +77,14 @@ export async function runAgent({
   agentId,
   conversationId,
   userMessage,
-  debug = false
+  debug = false,
+  runId
 }: {
   agentId: string;
   conversationId: string;
   userMessage: string;
   debug?: boolean;
+  runId?: string;
 }) {
   const supabase = createServerSupabaseClient();
 
@@ -208,6 +187,12 @@ export async function runAgent({
   const toolsCalled: string[] = [];
   let modelIterations = 0;
   let finalAssistantResponse = '';
+  let totalPromptTokens = 0;
+  let totalCompletionTokens = 0;
+  let totalTokens = 0;
+  let totalEstimatedCost = 0;
+  let totalLatencyMs = 0;
+  let lastModelName: string | undefined;
 
   // If a version workflow is present, delegate to the multi-agent router
   if (Array.isArray(versionWorkflow) && versionWorkflow.length > 0) {
@@ -219,13 +204,20 @@ export async function runAgent({
         conversationId,
         message: userMessage,
         workflow: versionWorkflow,
-        memories
+        memories,
+        runId
       }, selectedModel);
 
       finalAssistantResponse = result.message;
       // merge trace info
       toolsCalled.push(...(result.trace.toolsCalled || []));
       modelIterations = result.trace.modelIterations || modelIterations;
+      totalPromptTokens = result.trace.prompt_tokens ?? totalPromptTokens;
+      totalCompletionTokens = result.trace.completion_tokens ?? totalCompletionTokens;
+      totalTokens = result.trace.total_tokens ?? totalTokens;
+      totalEstimatedCost = result.trace.estimated_cost ?? totalEstimatedCost;
+      totalLatencyMs = result.trace.latency_ms ?? totalLatencyMs;
+      lastModelName = result.trace.model_name ?? lastModelName;
     } catch (err) {
       console.error('Multi-agent workflow failed, falling back to single-agent:', err);
     }
@@ -236,7 +228,20 @@ export async function runAgent({
     let currentMessages = [...messageBatch];
     for (let iteration = 0; iteration < 3; iteration += 1) {
       modelIterations += 1;
-      const assistantResponse = await callOpenAI(selectedModel, currentMessages);
+      const assistantResult = await chatCompletion({
+        model: selectedModel,
+        messages: currentMessages,
+        temperature: 0.7,
+        max_tokens: 1200
+      });
+      totalPromptTokens += assistantResult.prompt_tokens;
+      totalCompletionTokens += assistantResult.completion_tokens;
+      totalTokens += assistantResult.total_tokens;
+      totalEstimatedCost += assistantResult.estimated_cost;
+      totalLatencyMs += assistantResult.latency_ms;
+      lastModelName = assistantResult.model_name;
+
+      const assistantResponse = assistantResult.content;
       const toolCall = parseToolCall(assistantResponse);
 
       if (!toolCall) {
@@ -245,7 +250,7 @@ export async function runAgent({
       }
 
       toolsCalled.push(toolCall.name);
-      const toolResult = await runTool(toolCall.name, toolCall.args);
+      const toolResult = await runTool(toolCall.name, toolCall.args, runId);
       const toolResultText = JSON.stringify(toolResult, null, 2);
 
       currentMessages.push({ role: 'assistant', content: assistantResponse });
@@ -262,8 +267,25 @@ ${toolResultText}` });
   const trace: ExecutionTrace = {
     memoryUsed: memories.length > 0,
     toolsCalled,
-    modelIterations
+    modelIterations,
+    model_name: lastModelName,
+    prompt_tokens: totalPromptTokens,
+    completion_tokens: totalCompletionTokens,
+    total_tokens: totalTokens,
+    estimated_cost: totalEstimatedCost,
+    latency_ms: totalLatencyMs
   };
+
+  if (runId) {
+    await updateRunTelemetry(runId, {
+      input_tokens: totalPromptTokens,
+      output_tokens: totalCompletionTokens,
+      total_tokens: totalTokens,
+      estimated_cost: totalEstimatedCost,
+      latency_ms: totalLatencyMs,
+      model_name: lastModelName ?? null
+    });
+  }
 
   if (debug) {
     return new Response(JSON.stringify({ response: finalAssistantResponse, trace }), {

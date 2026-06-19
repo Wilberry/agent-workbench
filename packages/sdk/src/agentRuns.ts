@@ -102,6 +102,36 @@ export const agentRuns = {
     return data;
   },
 
+  async orgTelemetry(orgId: string, client?: SupabaseClient<Database>) {
+    const supabase = client ?? createServerSupabaseClient();
+    const { data, error } = await supabase
+      .from('agent_runs')
+      .select('estimated_cost, latency_ms, total_tokens')
+      .eq('organization_id', orgId);
+
+    if (error) throw error;
+
+    const rows = (data ?? []) as Array<{
+      estimated_cost: number;
+      latency_ms: number;
+      total_tokens: number;
+    }>;
+
+    const total_runs = rows.length;
+    const total_tokens = rows.reduce((sum, run) => sum + (run.total_tokens ?? 0), 0);
+    const total_estimated_cost = rows.reduce((sum, run) => sum + (run.estimated_cost ?? 0), 0);
+    const average_latency_ms = total_runs
+      ? Math.round(rows.reduce((sum, run) => sum + (run.latency_ms ?? 0), 0) / total_runs)
+      : 0;
+
+    return {
+      total_runs,
+      total_tokens,
+      total_estimated_cost,
+      average_latency_ms
+    };
+  },
+
   subscribeToRunEvents(runId: string, cb: (event: { event: string; payload: any }) => void) {
     return subscribeToRunEvents(runId, cb as any);
   }

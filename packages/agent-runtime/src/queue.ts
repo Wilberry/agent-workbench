@@ -25,6 +25,7 @@ export type ExecutionStep = {
     model?: string;
     tokens?: number;
     toolName?: string;
+    latency_ms?: number;
   } | null;
 };
 
@@ -302,6 +303,49 @@ export async function markQueueJobFailed(runId: string, failureReason?: string):
     .eq('run_id', runId);
 
   if (error) throw error;
+}
+
+export type RunTelemetryUpdate = {
+  input_tokens?: number;
+  output_tokens?: number;
+  total_tokens?: number;
+  estimated_cost?: number;
+  latency_ms?: number;
+  model_name?: string | null;
+};
+
+export async function updateRunTelemetry(runId: string, telemetry: RunTelemetryUpdate): Promise<void> {
+  const supabase = createServerSupabaseClient();
+
+  const { error } = await supabase.from('agent_runs').update(telemetry).eq('id', runId);
+  if (error) {
+    console.warn('Failed to update run telemetry:', error);
+  }
+}
+
+export async function persistToolCall(params: {
+  runId: string;
+  organizationId?: string | null;
+  toolName: string;
+  status: 'success' | 'failed';
+  latencyMs: number;
+  inputPayload: Record<string, unknown>;
+  outputPayload: unknown;
+}): Promise<void> {
+  const supabase = createServerSupabaseClient();
+  const { error } = await supabase.from('tool_calls').insert([{
+    run_id: params.runId,
+    organization_id: params.organizationId ?? null,
+    tool_name: params.toolName,
+    status: params.status,
+    latency_ms: params.latencyMs,
+    input_payload: params.inputPayload,
+    output_payload: params.outputPayload ?? {}
+  }]);
+
+  if (error) {
+    console.warn('Failed to persist tool call audit:', error);
+  }
 }
 
 export function isProcessing(runId: string): boolean {

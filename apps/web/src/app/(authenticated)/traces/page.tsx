@@ -13,6 +13,10 @@ type AgentRun = {
   execution_trace: Array<{
     metadata?: { toolName?: string; tokens?: number } | null;
   }>;
+  model_name?: string | null;
+  total_tokens: number;
+  estimated_cost: number;
+  latency_ms: number;
   status: 'pending' | 'running' | 'completed' | 'failed';
   created_at: string;
 };
@@ -146,7 +150,25 @@ export default async function TraceExplorerPage({
                     </span>
                     <span className="rounded-2xl bg-slate-950 px-3 py-1 text-sm text-slate-300">{run.steps} steps</span>
                     <span className="rounded-2xl bg-slate-950 px-3 py-1 text-sm text-slate-300">{run.tools.length || 0} tools</span>
-                    <span className="rounded-2xl bg-slate-950 px-3 py-1 text-sm text-slate-300">{run.modelIterations} tokens</span>
+                    <span className="rounded-2xl bg-slate-950 px-3 py-1 text-sm text-slate-300">{run.total_tokens} tokens</span>
+                  </div>
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-4">
+                  <div className="rounded-2xl bg-slate-950 p-4 text-sm text-slate-200">
+                    <div className="font-semibold text-slate-300">Model</div>
+                    <div className="mt-2 text-slate-100">{run.model_name ?? 'Unknown'}</div>
+                  </div>
+                  <div className="rounded-2xl bg-slate-950 p-4 text-sm text-slate-200">
+                    <div className="font-semibold text-slate-300">Total tokens</div>
+                    <div className="mt-2 text-slate-100">{run.total_tokens}</div>
+                  </div>
+                  <div className="rounded-2xl bg-slate-950 p-4 text-sm text-slate-200">
+                    <div className="font-semibold text-slate-300">Estimated cost</div>
+                    <div className="mt-2 text-slate-100">${run.estimated_cost.toFixed(4)}</div>
+                  </div>
+                  <div className="rounded-2xl bg-slate-950 p-4 text-sm text-slate-200">
+                    <div className="font-semibold text-slate-300">Latency</div>
+                    <div className="mt-2 text-slate-100">{run.latency_ms}ms</div>
                   </div>
                 </div>
                 <div className="mt-4 grid gap-3 sm:grid-cols-3">

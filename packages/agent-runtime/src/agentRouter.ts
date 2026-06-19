@@ -1,10 +1,18 @@
 import { runTool } from './tools';
+import { chatCompletion } from './llm/client';
+import type { LLMResponse } from './llm/types';
 
 export type ExecutionTrace = {
   memoryUsed: boolean;
   toolsCalled: string[];
   modelIterations: number;
   agentsUsed: string[];
+  model_name?: string;
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+  estimated_cost?: number;
+  latency_ms?: number;
 };
 
 type MemorySnippet = {
@@ -19,6 +27,7 @@ type AgentWorkflowInput = {
   message: string;
   workflow?: string[];
   memories?: MemorySnippet[];
+  runId?: string;
 };
 
 export type AgentWorkflowResult = {
@@ -26,30 +35,16 @@ export type AgentWorkflowResult = {
   trace: ExecutionTrace;
 };
 
-const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-
-
-export async function callOpenAI(messages: Array<{ role: string; content: string }>, model = 'gpt-4o-mini') {
-  if (!OPENAI_API_KEY) {
-    throw new Error('OPENAI_API_KEY is required for multi-agent workflows');
-  }
-
-  const res = await fetch(OPENAI_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${OPENAI_API_KEY}`
-    },
-    body: JSON.stringify({ model, messages, temperature: 0.7, max_tokens: 1200 })
+export async function callOpenAI(
+  messages: Array<{ role: string; content: string }>,
+  model = 'gpt-4o-mini'
+): Promise<LLMResponse> {
+  return chatCompletion({
+    model,
+    messages,
+    temperature: 0.7,
+    max_tokens: 1200
   });
-
-  if (!res.ok) {
-    throw new Error(`OpenAI request failed: ${res.status} ${await res.text()}`);
-  }
-
-  const payload = await res.json();
-  return payload.choices?.[0]?.message?.content ?? '';
 }
 
 function formatMemoryContext(memories: MemorySnippet[] = []) {
@@ -93,13 +88,19 @@ function roleDescription(role: string) {
 }
 
 export async function runMultiAgentWorkflow(
-  { userId, conversationId, message, workflow, memories = [] }: AgentWorkflowInput,
+  { userId, conversationId, message, workflow, memories = [], runId }: AgentWorkflowInput,
   modelOverride?: string
 ): Promise<AgentWorkflowResult> {
   const agentRoles = workflow && workflow.length > 0 ? workflow : ['Planner', 'Executor', 'Reviewer'];
   const memoryContext = formatMemoryContext(memories);
   const toolsCalled: string[] = [];
   let modelIterations = 0;
+  let totalPromptTokens = 0;
+  let totalCompletionTokens = 0;
+  let totalTokens = 0;
+  let totalEstimatedCost = 0;
+  let totalLatencyMs = 0;
+  let lastModelName: string | undefined;
   const episode: string[] = [];
 
   for (const role of agentRoles) {
@@ -122,14 +123,20 @@ Respond with your assigned role output.`
       }
     ];
 
-    const agentOutput = await callOpenAI(rolePrompt, modelOverride ?? 'gpt-4o-mini');
+    const agentResponse = await callOpenAI(rolePrompt, modelOverride ?? 'gpt-4o-mini');
     modelIterations += 1;
-    let finalOutput = agentOutput;
+    let finalOutput = agentResponse.content;
+    totalPromptTokens += agentResponse.prompt_tokens;
+    totalCompletionTokens += agentResponse.completion_tokens;
+    totalTokens += agentResponse.total_tokens;
+    totalEstimatedCost += agentResponse.estimated_cost;
+    totalLatencyMs += agentResponse.latency_ms;
+    lastModelName = agentResponse.model_name;
 
-    const toolCall = parseToolCall(agentOutput);
+    const toolCall = parseToolCall(finalOutput);
     if (toolCall) {
       toolsCalled.push(toolCall.name);
-      const toolResult = await runTool(toolCall.name, toolCall.args);
+      const toolResult = await runTool(toolCall.name, toolCall.args, runId);
       const toolPrompt = [
         ...rolePrompt,
         {
@@ -143,8 +150,15 @@ ${JSON.stringify(toolResult, null, 2)}`
         }
       ];
 
-            finalOutput = await callOpenAI(toolPrompt, modelOverride ?? 'gpt-4o-mini');
+      const toolResponse = await callOpenAI(toolPrompt, modelOverride ?? 'gpt-4o-mini');
+      finalOutput = toolResponse.content;
       modelIterations += 1;
+      totalPromptTokens += toolResponse.prompt_tokens;
+      totalCompletionTokens += toolResponse.completion_tokens;
+      totalTokens += toolResponse.total_tokens;
+      totalEstimatedCost += toolResponse.estimated_cost;
+      totalLatencyMs += toolResponse.latency_ms;
+      lastModelName = toolResponse.model_name;
     }
 
     episode.push(`${role.toUpperCase()} OUTPUT:
@@ -157,7 +171,13 @@ ${finalOutput}`);
       memoryUsed: memories.length > 0,
       toolsCalled,
       modelIterations,
-      agentsUsed: agentRoles
+      agentsUsed: agentRoles,
+      model_name: lastModelName,
+      prompt_tokens: totalPromptTokens,
+      completion_tokens: totalCompletionTokens,
+      total_tokens: totalTokens,
+      estimated_cost: totalEstimatedCost,
+      latency_ms: totalLatencyMs
     }
   };
 }

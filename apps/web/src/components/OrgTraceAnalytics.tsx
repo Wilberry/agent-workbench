@@ -3,9 +3,25 @@ import type { Database } from '@/types/database';
 
 type AgentRun = Database['public']['Tables']['agent_runs']['Row'];
 
+export function computeOrgTraceMetrics(runs: AgentRun[]) {
+  const totalRuns = runs.length;
+  const totalTokens = runs.reduce((sum, run) => sum + (run.total_tokens ?? 0), 0);
+  const totalEstimatedCost = runs.reduce((sum, run) => sum + (run.estimated_cost ?? 0), 0);
+  const averageLatency = totalRuns
+    ? Math.round(runs.reduce((sum, run) => sum + (run.latency_ms ?? 0), 0) / totalRuns)
+    : 0;
+
+  return {
+    totalRuns,
+    totalTokens,
+    totalEstimatedCost,
+    averageLatency
+  };
+}
+
 export default function OrgTraceAnalytics({ orgId, runs }: { orgId: string; runs: AgentRun[] }) {
   const orgRuns = runs ?? [];
-  const totalRuns = orgRuns.length;
+  const { totalRuns, totalTokens, totalEstimatedCost, averageLatency } = computeOrgTraceMetrics(orgRuns);
 
   const statusCounts = orgRuns.reduce(
     (acc, run) => {
@@ -25,7 +41,7 @@ export default function OrgTraceAnalytics({ orgId, runs }: { orgId: string; runs
     .slice(-10);
 
   const maxSteps = Math.max(...traceSeries.map((t) => t.steps), 1);
-  const totalTokens = orgRuns.reduce(
+  const totalTraceTokens = orgRuns.reduce(
     (sum, run) => sum + ((run.execution_trace ?? []).reduce((inner: number, s: any) => inner + (s?.metadata?.tokens ?? 0), 0) ?? 0),
     0
   );
@@ -61,8 +77,12 @@ export default function OrgTraceAnalytics({ orgId, runs }: { orgId: string; runs
               <div className="mt-1 text-2xl font-semibold text-white">{totalTokens}</div>
             </div>
             <div className="rounded-3xl bg-slate-950 p-3 text-center">
-              <div className="text-sm text-slate-400">Unique tools</div>
-              <div className="mt-1 text-2xl font-semibold text-white">{toolNames.length}</div>
+              <div className="text-sm text-slate-400">Estimated cost</div>
+              <div className="mt-1 text-2xl font-semibold text-white">${totalEstimatedCost.toFixed(4)}</div>
+            </div>
+            <div className="rounded-3xl bg-slate-950 p-3 text-center">
+              <div className="text-sm text-slate-400">Average latency</div>
+              <div className="mt-1 text-2xl font-semibold text-white">{averageLatency}ms</div>
             </div>
           </div>
         </div>
