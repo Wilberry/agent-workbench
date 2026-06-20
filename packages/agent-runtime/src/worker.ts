@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from '@agent-workbench/sdk';
+import { createServerSupabaseClient, agents } from '@agent-workbench/sdk';
 import { chatCompletion } from './llm/client';
 import { runTool } from './tools';
 import { generateEmbedding } from './embeddings';
@@ -16,6 +16,7 @@ import {
   setProcessing,
   type ExecutionStep
 } from './queue';
+import { persistTraceEvent } from './tracing';
 
 const MAX_RETRIES = 3;
 
@@ -76,8 +77,19 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
   const { runId, message, workflow, memories } = job;
   const supabase = createServerSupabaseClient();
 
+  const persistEvent = async (eventType: string, payload: unknown) => {
+    void persistTraceEvent(runId, eventType, payload).catch((err) => {
+      console.warn('Failed to persist trace event', err);
+    });
+  };
+
   try {
     setProcessing(runId, true);
+    void persistEvent('run_started', {
+      workflow,
+      message,
+      organizationId: null
+    });
 
     // Fetch current run to get existing trace (for recovery)
     const { data: existingRun, error: fetchError } = await supabase
@@ -105,16 +117,7 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
       throw new Error(`Conversation not found for id ${job.conversationId}`);
     }
 
-    const { data: agent, error: agentError } = await supabase
-      .from('agents')
-      .select('name, system_prompt, model')
-      .eq('id', conversation.agent_id)
-      .single();
-
-    if (agentError) {
-      throw new Error(`Failed to load agent configuration: ${agentError.message}`);
-    }
-
+    const agent = await agents.get(conversation.agent_id, supabase);
     const agentName = agent?.name ?? 'AI agent';
     const baseAgentPrompt = agent?.system_prompt ? `Agent prompt:\n${agent.system_prompt}\n\n` : '';
     const agentModel = (agent?.model as string | undefined) ?? 'gpt-4o-mini';
@@ -198,8 +201,18 @@ Respond with your assigned role output.`
           if (toolCall) {
             toolsCalled.push(toolCall.name);
             allToolsCalled.push(toolCall.name);
+            const toolCallStart = Date.now();
 
             const toolResult = await runTool(toolCall.name, toolCall.args, runId, organizationId);
+            void persistEvent('tool_call', {
+              stepIndex,
+              toolName: toolCall.name,
+              status: 'success',
+              input: toolCall.args,
+              output: toolResult,
+              latency_ms: Date.now() - toolCallStart
+            });
+
             const toolPrompt = [
               ...rolePrompt,
               {
@@ -261,6 +274,16 @@ ${JSON.stringify(toolResult, null, 2)}`
           };
 
           await persistExecutionStep(runId, execStep);
+          void persistEvent('step_completed', {
+            stepIndex,
+            step: role,
+            status: 'completed',
+            output: finalOutput,
+            model: lastModelName,
+            tokens: stepTokens,
+            latency_ms: stepLatencyMs,
+            toolName: toolsCalled[0] ?? null
+          });
 
           // Step succeeded, break retry loop
           stepFailed = false;
@@ -282,30 +305,37 @@ ${JSON.stringify(toolResult, null, 2)}`
       }
 
       if (stepFailed) {
-        // Persist error step and broadcast
-        const errorExecStep: ExecutionStep = {
-          id: randomUUID(),
-          run_id: runId,
-          step: role.toLowerCase() as ExecutionStep['step'],
-          status: 'failed',
-          input: message,
-          output: '',
-          error: stepError || undefined,
-          timestamp: new Date().toISOString(),
-          metadata: {
+          void persistEvent('step_failed', {
+            stepIndex,
+            step: role,
+            error: stepError,
             model: lastModelName,
-            tokens: undefined,
-            toolName: toolsCalled[0]
-          }
-        };
+            toolName: toolsCalled[0] ?? null
+          });
 
-        await persistExecutionStep(runId, errorExecStep);
-        await markRunFailed(runId, `Step ${stepIndex} (${role}) failed after ${MAX_RETRIES} retries: ${stepError}`);
-        await markQueueJobFailed(runId, stepError ?? `Step ${stepIndex} (${role}) failed`);
-        setProcessing(runId, false);
-        throw new Error(`Workflow failed at step ${stepIndex}`);
-      }
+          // Persist error step and broadcast
+          const errorExecStep: ExecutionStep = {
+            id: randomUUID(),
+            run_id: runId,
+            step: role.toLowerCase() as ExecutionStep['step'],
+            status: 'failed',
+            input: message,
+            output: '',
+            error: stepError || undefined,
+            timestamp: new Date().toISOString(),
+            metadata: {
+              model: lastModelName,
+              tokens: undefined,
+              toolName: toolsCalled[0]
+            }
+          };
 
+          await persistExecutionStep(runId, errorExecStep);
+          await markRunFailed(runId, `Step ${stepIndex} (${role}) failed after ${MAX_RETRIES} retries: ${stepError}`);
+          await markQueueJobFailed(runId, stepError ?? `Step ${stepIndex} (${role}) failed`);
+          setProcessing(runId, false);
+          throw new Error(`Workflow failed at step ${stepIndex}`);
+        }
       currentStep = stepIndex + 1;
     }
 
@@ -330,11 +360,21 @@ ${JSON.stringify(toolResult, null, 2)}`
     }
 
     // Mark complete
+    void persistEvent('run_completed', {
+      total_steps: workflow.length,
+      total_tokens: totalTokens,
+      estimated_cost: totalEstimatedCost,
+      latency_ms: totalLatencyMs,
+      model_name: lastModelName ?? null
+    });
     await markRunCompleted(runId);
     await markQueueJobCompleted(runId);
     setProcessing(runId, false);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
+    void persistEvent('run_failed', {
+      error: errorMessage
+    });
     console.error('Workflow execution failed:', errorMessage);
     try {
       const { attempts, maxAttempts, isDead } = await incrementAttemptsAndMaybeDead(runId, errorMessage);

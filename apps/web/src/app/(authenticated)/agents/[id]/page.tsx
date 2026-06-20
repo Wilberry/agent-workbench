@@ -2,7 +2,9 @@ import Link from 'next/link';
 import { cookies, headers } from 'next/headers';
 import type { Database } from '@/types/database';
 import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-nextjs';
+import { db } from '@/lib/db';
 import AgentChat from '@/components/AgentChat';
+import AgentVersionHistory from '@/components/AgentVersionHistory';
 
 type Props = {
   params: {
@@ -16,15 +18,17 @@ export default async function AgentPage({ params }: Props) {
     data: { user }
   } = await supabase.auth.getUser();
 
-  const { data: agent, error: agentError } = await supabase
-    .from('agents')
-    .select('id, name, system_prompt, model')
-    .eq('id', params.id)
-    .single();
+  const agent = await db.agents.get(params.id);
 
-  if (agentError || !agent) {
+  if (!agent) {
     return <div className="p-6 text-red-400">Agent not found.</div>;
   }
+
+  // Fetch agent versions
+  const versions = await db.agents.listVersions(agent.id);
+
+  // Get current version
+  const currentVersion = await db.agents.getLatestVersion(agent.id);
 
   const { data: conversation } = await supabase
     .from('conversations')
@@ -67,6 +71,17 @@ export default async function AgentPage({ params }: Props) {
             </Link>
           </div>
         </div>
+
+        {versions && versions.length > 0 && (
+          <div className="space-y-3">
+            <h2 className="text-lg font-semibold text-slate-100">Version History</h2>
+            <AgentVersionHistory
+              agentId={agent.id}
+              versions={versions}
+              currentVersion={currentVersion}
+            />
+          </div>
+        )}
 
         <AgentChat
           agentId={agent.id}

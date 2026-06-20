@@ -36,6 +36,8 @@ export type AgentRunQueueJob = {
   message: string;
   workflow: string[];
   memories: Array<{ role: 'user' | 'assistant'; content: string; similarity: number }>;
+  agentVersionId?: string | null;
+  organizationId?: string | null;
 };
 
 const processing = new Set<string>();
@@ -50,6 +52,8 @@ export async function enqueueAgentRun(job: AgentRunQueueJob): Promise<string> {
         user_id: job.userId,
         conversation_id: job.conversationId,
         workflow: job.workflow,
+        agent_version_id: job.agentVersionId ?? null,
+        organization_id: job.organizationId ?? null,
         status: 'pending'
       }
     ])

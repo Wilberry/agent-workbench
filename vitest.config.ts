@@ -13,6 +13,8 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      '@': path.resolve(__dirname, 'apps/web/src'),
+      '@/*': path.resolve(__dirname, 'apps/web/src/*'),
       '@agent-workbench/sdk': path.resolve(__dirname, 'packages/sdk/src'),
       '@agent-workbench/sdk/*': path.resolve(__dirname, 'packages/sdk/src/*'),
       '@agent-workbench/agent-runtime': path.resolve(__dirname, 'packages/agent-runtime/src'),

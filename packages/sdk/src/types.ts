@@ -29,10 +29,14 @@ export type AgentVersion = {
   id: string;
   agent_id: string;
   version: string;
+  version_number: number;
   description: string | null;
   system_prompt: string;
+  model: string;
   workflow: string[];
+  tools: Record<string, unknown>[];
   metadata: Record<string, unknown>;
+  created_by?: string | null;
   created_at: string;
 };
 
@@ -100,10 +104,19 @@ export type AgentRun = {
     metadata?: { model?: string; tokens?: number; toolName?: string } | null;
   }>;
   organization_id?: string | null;
+  agent_version_id?: string | null;
+  replay_of_run_id?: string | null;
+  replay_reason?: string | null;
   status: 'pending' | 'running' | 'completed' | 'failed';
   error_message?: string | null;
   created_at: string;
   updated_at: string;
+  input_tokens?: number;
+  output_tokens?: number;
+  total_tokens?: number;
+  estimated_cost?: number;
+  latency_ms?: number;
+  model_name?: string | null;
 };
 
 type SupabaseTable<Row> = {
@@ -215,6 +228,9 @@ export type Database = {
         latency_ms: number;
         model_name?: string | null;
         organization_id?: string | null;
+        agent_version_id?: string | null;
+        replay_of_run_id?: string | null;
+        replay_reason?: string | null;
         status: 'pending' | 'running' | 'completed' | 'failed';
         error_message?: string | null;
         created_at: string;
@@ -247,6 +263,13 @@ export type Database = {
         created_at: string;
         updated_at: string;
       }>;
+      agent_run_events: SupabaseTable<{
+        id: string;
+        run_id: string;
+        event_type: string;
+        payload: unknown;
+        created_at: string;
+      }>;
       agent_versions: SupabaseTable<{
         id: string;
         agent_id: string;
@@ -254,7 +277,11 @@ export type Database = {
         description: string | null;
         system_prompt: string;
         workflow: string[];
+        tools: Record<string, unknown>[];
         metadata: Record<string, unknown>;
+        model: string;
+        version_number: number;
+        created_by: string | null;
         created_at: string;
       }>;
       tools: SupabaseTable<{
@@ -274,7 +301,27 @@ export type Database = {
         updated_at: string;
       }>;
     };
-    Views: {};
+    Views: {
+      agent_latest_versions: {
+        Row: {
+          id: string;
+          agent_id: string;
+          version: string;
+          description: string | null;
+          system_prompt: string;
+          workflow: string[];
+          tools: Record<string, unknown>[];
+          metadata: Record<string, unknown>;
+          model: string;
+          version_number: number;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+    };
     Functions: {
       dequeue_agent_run_job: {
         Args: Record<string, never>;

@@ -1,5 +1,5 @@
 import type { NextRequest } from 'next/server';
-import { agentRuns } from '@agent-workbench/sdk';
+import { agentRuns, createServerSupabaseClient } from '@agent-workbench/sdk';
 
 type Params = {
   params: {
@@ -17,7 +17,17 @@ export async function GET(request: NextRequest, { params }: Params) {
 
     const run = await agentRuns.get(runId);
 
-    return new Response(JSON.stringify(run), {
+    // Fetch run events for richer replay reconstruction
+    const supabase = createServerSupabaseClient();
+    const { data: eventsData, error: eventsError } = await supabase
+      .from('agent_run_events')
+      .select('*')
+      .eq('run_id', runId)
+      .order('created_at', { ascending: true });
+
+    const runEvents = eventsError ? [] : eventsData ?? [];
+
+    return new Response(JSON.stringify({ ...run, run_events: runEvents }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
     });

@@ -37,3 +37,7 @@ test-results
 # OS
 .DS_Store
 Thumbs.db
+
+# Temporary debug and migration artifacts
+mp-*.js
+tmp-*.sql

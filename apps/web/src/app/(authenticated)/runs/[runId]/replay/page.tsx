@@ -1,54 +1,87 @@
-import RunDetailClient from '@/components/RunDetailClient';
-import ReplayPlayer from '@/components/ReplayPlayer';
-import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-nextjs';
-import type { Database } from '@/types/database';
+import Link from 'next/link';
 import { cookies, headers } from 'next/headers';
-import { agentRuns } from '@agent-workbench/sdk';
+import type { Database } from '@/types/database';
+import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-nextjs';
+import { db } from '@/lib/db';
+import ReplayButton from '@/components/ReplayButton';
 
-export default async function RunReplayPage({ params }: { params: { runId: string } }) {
+type Params = {
+  params: {
+    runId: string;
+  };
+};
+
+export default async function ReplayPage({ params }: Params) {
   const supabase = createServerComponentSupabaseClient<Database>({ headers, cookies });
   const {
     data: { user }
   } = await supabase.auth.getUser();
-  if (!user) return <div className="p-6 text-red-400">Not authenticated</div>;
 
-  const run = await agentRuns.get(params.runId);
-  if (!run) return <div className="p-6 text-red-400">Run not found</div>;
+  if (!user) {
+    return <div className="p-6 text-red-400">Not authenticated.</div>;
+  }
 
-  const trace = run.execution_trace || [];
+  // Get the original run
+  const { data: run } = await supabase
+    .from('agent_runs')
+    .select('*, conversations!inner(agent_id)')
+    .eq('id', params.runId)
+    .eq('user_id', user.id)
+    .single();
+
+  if (!run) {
+    return <div className="p-6 text-red-400">Run not found or access denied.</div>;
+  }
+
+  // Get all agent versions for this run's agent
+  const agentId = (run.conversations as any)?.agent_id;
+  const versions = await db.agents.listVersions(agentId);
 
   return (
-    <main className="p-6">
-      <div className="mx-auto max-w-6xl space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold">Replay: {run.id}</h1>
+    <main className="min-h-screen bg-slate-950 text-white p-6">
+      <div className="mx-auto max-w-2xl space-y-6">
+        <Link href={`/runs/${run.id}`} className="text-slate-400 transition hover:text-slate-100">
+          ← Back to run
+        </Link>
+
+        <div className="rounded-3xl border border-slate-700 bg-slate-900 p-6">
+          <h1 className="text-3xl font-semibold">Replay Run</h1>
+          <p className="mt-2 text-slate-400">
+            Create a new run using a different agent version to compare results or test improvements.
+          </p>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-          <div className="md:col-span-2">
-            {/* Client-side player */}
-            {/* @ts-ignore */}
-            <ReplayPlayer runId={run.id} />
-          </div>
-          <div>
-            <div className="rounded-3xl border border-slate-700 bg-slate-900 p-4">
-              <div className="text-sm text-slate-300">Run Metadata</div>
-              <div className="mt-2 text-sm text-slate-400">
-                <div>Created: {new Date(run.created_at).toLocaleString()}</div>
-                <div>Status: {run.status}</div>
-                <div>Current step: {run.current_step}</div>
+        <div className="rounded-3xl border border-slate-700 bg-slate-900 p-6">
+          <div className="mb-6">
+            <h2 className="mb-3 text-lg font-semibold">Original Run</h2>
+            <div className="space-y-2 text-sm text-slate-400">
+              <div>
+                <span className="font-semibold text-slate-200">Run ID:</span> {run.id}
               </div>
+              <div>
+                <span className="font-semibold text-slate-200">Status:</span> {run.status}
+              </div>
+              <div>
+                <span className="font-semibold text-slate-200">Created:</span>{' '}
+                {new Date(run.created_at).toLocaleString()}
+              </div>
+              {run.input_tokens && (
+                <div>
+                  <span className="font-semibold text-slate-200">Tokens:</span> {run.input_tokens} input,{' '}
+                  {run.output_tokens} output
+                </div>
+              )}
             </div>
+          </div>
 
-            <div className="mt-4">
-              {/* Client subscribe component to see live updates */}
-              {/* @ts-ignore */}
-              <RunDetailClient runId={run.id} initialTrace={trace} initialStatus={run.status} />
-            </div>
+          <div className="border-t border-slate-700 pt-6">
+            <h2 className="mb-4 text-lg font-semibold">Create Replay</h2>
+            <ReplayButton run={run} versions={versions || []} />
           </div>
         </div>
       </div>
     </main>
   );
 }
+
 

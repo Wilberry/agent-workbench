@@ -132,6 +132,52 @@ export const agentRuns = {
     };
   },
 
+  async replayRun(
+    originalRunId: string,
+    options: {
+      versionId?: string;
+      reason?: string;
+    } = {},
+    client?: SupabaseClient<Database>
+  ) {
+    const supabase = client ?? createServerSupabaseClient();
+
+    // Fetch the original run
+    const { data: originalRun, error: fetchError } = await supabase
+      .from('agent_runs')
+      .select('*')
+      .eq('id', originalRunId)
+      .single();
+
+    if (fetchError || !originalRun) {
+      throw fetchError ?? new Error('Original run not found');
+    }
+
+    // Create a new run as a replay
+    const { data: newRun, error: createError } = await supabase
+      .from('agent_runs')
+      .insert([
+        {
+          user_id: originalRun.user_id,
+          conversation_id: originalRun.conversation_id,
+          workflow: originalRun.workflow,
+          organization_id: originalRun.organization_id ?? null,
+          agent_version_id: options.versionId ?? originalRun.agent_version_id ?? null,
+          replay_of_run_id: originalRunId,
+          replay_reason: options.reason ?? 'manual replay',
+          status: 'pending'
+        }
+      ])
+      .select('*')
+      .single();
+
+    if (createError || !newRun) {
+      throw createError ?? new Error('Failed to create replay run');
+    }
+
+    return newRun as AgentRun;
+  },
+
   subscribeToRunEvents(runId: string, cb: (event: { event: string; payload: any }) => void) {
     return subscribeToRunEvents(runId, cb as any);
   }

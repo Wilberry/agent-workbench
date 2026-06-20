@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from '@agent-workbench/sdk';
+import { agents, createServerSupabaseClient } from '@agent-workbench/sdk';
 import { getRelevantMemories } from './memory';
 import fetch from 'node-fetch';
 
@@ -72,10 +72,7 @@ export const toolList: Tool[] = [
     },
     execute: async (args) => {
       const agentId = String(args.agentId);
-      const supabase = createServerSupabaseClient();
-      const { data, error } = await supabase.from('agents').select('id, name, description, system_prompt, model').eq('id', agentId).single();
-      if (error) throw error;
-      return data;
+      return await agents.get(agentId);
     }
   }
 ];

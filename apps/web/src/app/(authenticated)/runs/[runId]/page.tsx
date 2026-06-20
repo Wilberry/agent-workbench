@@ -159,7 +159,38 @@ export default async function RunDetailPage({ params }: Params) {
               <div className="mt-1 text-sm text-red-200">{run.error_message}</div>
             </div>
           )}
+
+          {run.replay_of_run_id && (
+            <div className="mt-4 rounded-2xl border border-blue-700 bg-blue-950/30 p-4">
+              <div className="font-semibold text-blue-100">This is a replay</div>
+              <div className="mt-1 text-sm text-blue-200">
+                {run.replay_reason}
+                <br />
+                <Link
+                  href={`/runs/${run.replay_of_run_id}`}
+                  className="mt-2 inline-block rounded border border-blue-600 px-2 py-1 text-xs hover:bg-blue-900"
+                >
+                  View original run →
+                </Link>
+              </div>
+            </div>
+          )}
         </div>
+
+        {run.status === 'completed' && (
+          <div className="rounded-3xl border border-slate-700 bg-slate-900 p-6">
+            <h2 className="mb-4 text-lg font-semibold">Replay Options</h2>
+            <p className="mb-4 text-sm text-slate-400">
+              Create a new run using a different agent version to test improvements or changes.
+            </p>
+            <Link
+              href={`/runs/${run.id}/replay`}
+              className="inline-block rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500"
+            >
+              Create replay run
+            </Link>
+          </div>
+        )}
 
         <div className="space-y-3">
           <h2 className="text-xl font-semibold">Execution Timeline</h2>

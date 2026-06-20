@@ -1,11 +1,12 @@
 import type { Message } from '@agent-workbench/sdk';
-import { createServerSupabaseClient } from '@agent-workbench/sdk';
+import { agents, createServerSupabaseClient } from '@agent-workbench/sdk';
 import { generateEmbedding } from './embeddings';
 import { getRelevantMemories } from './memory';
 import { runTool, toolList } from './tools';
 import { runMultiAgentWorkflow } from './agentRouter';
 import { chatCompletion } from './llm/client';
 import { updateRunTelemetry } from './queue';
+import { persistTraceEvent } from './tracing';
 
 export type ExecutionTrace = {
   memoryUsed: boolean;
@@ -88,15 +89,12 @@ export async function runAgent({
 }) {
   const supabase = createServerSupabaseClient();
 
-  const { data: agent, error: agentError } = await supabase
-    .from('agents')
-    .select('system_prompt, model')
-    .eq('id', agentId)
-    .single();
+  const { agent, latestVersion } = await agents.getAgentForExecution(agentId, supabase);
 
-  if (agentError || !agent) {
-    throw agentError ?? new Error('Agent not found');
-  }
+  const persistEvent = async (eventType: string, payload: unknown = {}) => {
+    if (!runId) return;
+    void persistTraceEvent(runId, eventType, payload).catch((err) => console.warn('Failed to persist trace event', err));
+  };
 
   const { data: userMessageRow, error: userMessageError } = await supabase
     .from('messages')
@@ -129,55 +127,22 @@ export async function runAgent({
   const memories = await getRelevantMemories({ conversationId, query: userMessage });
   const memoryContext = formatMemoryContext(memories);
   const conversationHistory = ((history ?? []) as Message[]).map((message) => ({ role: message.role, content: message.content }));
-  // Prefer agent version if available
+
   let selectedSystemPrompt = agent.system_prompt;
   let selectedModel = agent.model ?? 'gpt-4o-mini';
   let versionWorkflow: string[] | undefined = undefined;
 
-  try {
-    const { data: versionData, error: versionError } = await supabase
-      .from('agent_versions')
-      .select('*')
-      .eq('agent_id', agentId)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (!versionError && versionData) {
-      if (versionData.system_prompt) selectedSystemPrompt = versionData.system_prompt;
-      if (versionData.metadata && typeof versionData.metadata.model === 'string') selectedModel = versionData.metadata.model;
-      if (Array.isArray(versionData.workflow) && versionData.workflow.length > 0) versionWorkflow = versionData.workflow;
+  if (latestVersion) {
+    if (latestVersion.system_prompt) selectedSystemPrompt = latestVersion.system_prompt;
+    if (latestVersion.metadata && typeof latestVersion.metadata.model === 'string') {
+      selectedModel = latestVersion.metadata.model;
     }
-  } catch (err) {
-    // ignore version fetch errors and fall back to agent defaults
+    if (Array.isArray(latestVersion.workflow) && latestVersion.workflow.length > 0) {
+      versionWorkflow = latestVersion.workflow;
+    }
   }
 
   const baseSystemPrompt = buildSystemPrompt(selectedSystemPrompt, toolList, memoryContext);
-  // Attempt to find a versioned agent configuration (prefer latest)
-  try {
-    const { data: versionData, error: versionError } = await supabase
-      .from('agent_versions')
-      .select('version, system_prompt, workflow, metadata')
-      .eq('agent_id', agentId)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
-
-    if (!versionError && versionData) {
-      // Use version system_prompt if provided
-      if (versionData.system_prompt) {
-        // prepend version prompt to base prompt
-        // keep tools list and memory context intact
-      }
-      // If workflow is defined in version, prefer it
-      if (Array.isArray(versionData.workflow) && versionData.workflow.length > 0) {
-        // override agentRoles later in runMultiAgent workflows when needed
-      }
-    }
-  } catch (err) {
-    // non-fatal
-  }
-
   const messageBatch: Array<{ role: string; content: string }> = [
     { role: 'system', content: baseSystemPrompt },
     ...conversationHistory,
@@ -199,6 +164,7 @@ export async function runAgent({
     const { data: userInfo } = await supabase.auth.getUser();
     const userId = userInfo?.user?.id ?? '';
     try {
+      void persistEvent('run_started', { workflow: versionWorkflow, message: userMessage });
       const result = await runMultiAgentWorkflow({
         userId,
         conversationId,
@@ -209,6 +175,7 @@ export async function runAgent({
       }, selectedModel);
 
       finalAssistantResponse = result.message;
+      void persistEvent('run_completed', { model_name: result.trace.model_name, trace: result.trace });
       // merge trace info
       toolsCalled.push(...(result.trace.toolsCalled || []));
       modelIterations = result.trace.modelIterations || modelIterations;
@@ -226,6 +193,7 @@ export async function runAgent({
   // Fallback to single-agent loop if multi-agent did not produce a result
   if (!finalAssistantResponse) {
     let currentMessages = [...messageBatch];
+    void persistEvent('run_started', { workflow: ['single-agent'], message: userMessage });
     for (let iteration = 0; iteration < 3; iteration += 1) {
       modelIterations += 1;
       const assistantResult = await chatCompletion({
@@ -250,7 +218,9 @@ export async function runAgent({
       }
 
       toolsCalled.push(toolCall.name);
+      const toolStart = Date.now();
       const toolResult = await runTool(toolCall.name, toolCall.args, runId);
+      void persistEvent('tool_call', { name: toolCall.name, args: toolCall.args, latency_ms: Date.now() - toolStart });
       const toolResultText = JSON.stringify(toolResult, null, 2);
 
       currentMessages.push({ role: 'assistant', content: assistantResponse });
