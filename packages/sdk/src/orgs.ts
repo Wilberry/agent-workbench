@@ -9,17 +9,56 @@ export const orgs = {
     client?: SupabaseClient<Database>
   ) {
     const supabase = client ?? createServerSupabaseClient();
+    const payload: Record<string, unknown> = {
+      ...org,
+      owner_id: userId
+    };
 
-    const { data, error } = await supabase
-      .from('organizations')
-      .insert([{ ...org, owner_id: userId }])
-      .select('*')
-      .single();
+    const insertOrg = async (insertPayload: Record<string, unknown>) => {
+      const { data, error } = await supabase
+        .from('organizations')
+        .insert([insertPayload])
+        .select('*')
+        .single();
 
-    if (error) throw error;
-    await supabase.from('organization_memberships').insert([{ org_id: data.id, user_id: userId, role: 'owner' }]);
-    await supabase.from('org_billing').insert([{ org_id: data.id, plan: 'free', tokens_used: 0, runs_used: 0 }]);
-    return data;
+      if (error) return { data: null, error };
+      return { data, error: null };
+    };
+
+    const { data, error } = await insertOrg(payload);
+    let createdOrg = data;
+    let insertError = error;
+
+    if (insertError) {
+      const message = insertError.message ?? String(insertError);
+      const fallbackFields = ['slug', 'description', 'metadata'] as const;
+      const fallbackPayload = { ...payload };
+      let shouldRetry = false;
+
+      for (const field of fallbackFields) {
+        if (
+          message.includes(`column organizations.${field} does not exist`) ||
+          message.includes(`Could not find the '${field}' column`) ||
+          message.includes(`unknown column`) ||
+          message.includes(`invalid column`)
+        ) {
+          shouldRetry = true;
+          delete fallbackPayload[field];
+        }
+      }
+
+      if (shouldRetry) {
+        const retryResult = await insertOrg(fallbackPayload);
+        createdOrg = retryResult.data;
+        insertError = retryResult.error;
+      }
+    }
+
+    if (insertError || !createdOrg) throw insertError ?? new Error('Failed to create organization');
+
+    await supabase.from('organization_memberships').insert([{ org_id: createdOrg.id, user_id: userId, role: 'owner' }]);
+    await supabase.from('org_billing').insert([{ org_id: createdOrg.id, plan: 'free', tokens_used: 0, runs_used: 0 }]);
+    return createdOrg;
   },
 
   async listUserOrgs(userId: string, client?: SupabaseClient<Database>) {

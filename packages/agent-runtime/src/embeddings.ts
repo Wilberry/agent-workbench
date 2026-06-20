@@ -1,10 +1,10 @@
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const USE_MOCK_OPENAI = process.env.USE_MOCK_OPENAI === 'true' || !OPENAI_API_KEY;
 const OPENAI_EMBEDDING_URL = 'https://api.openai.com/v1/embeddings';
 
-
 export async function generateEmbedding(text: string): Promise<number[]> {
-  if (!OPENAI_API_KEY) {
-    throw new Error('OPENAI_API_KEY is required for OpenAI embeddings');
+  if (USE_MOCK_OPENAI) {
+    return new Array(1536).fill(0);
   }
 
   const response = await fetch(OPENAI_EMBEDDING_URL, {

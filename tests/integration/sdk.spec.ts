@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from 'vitest';
-import { agentRuns, createServerSupabaseClient } from '@agent-workbench/sdk';
+import { agentRuns, createServerSupabaseClient, orgs } from '@agent-workbench/sdk';
 import { createTestRun } from '../utils/createTestRun';
 import { cleanupRuns } from '../utils/cleanupRuns';
 import { processAgentRunJob } from '@agent-workbench/agent-runtime';
@@ -42,16 +42,14 @@ describe('SDK integration', () => {
   });
 
   it('aggregates telemetry for organization runs', async () => {
-    const supabase = createServerSupabaseClient();
-    const { data: org, error: orgError } = await supabase
-      .from('organizations')
-      .insert([{ name: 'Telemetry Org', slug: `telemetry-org-${Date.now()}`, owner_id: context!.userId }])
-      .select('id')
-      .single();
+    const org = await orgs.createOrg(context!.userId, {
+      name: 'Telemetry Org',
+      slug: `telemetry-org-${Date.now()}`
+    });
 
-    expect(orgError).toBeNull();
     expect(org).toBeDefined();
 
+    const supabase = createServerSupabaseClient();
     const runsPayload = [
       {
         user_id: context!.userId,
