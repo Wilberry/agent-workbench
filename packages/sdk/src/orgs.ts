@@ -9,30 +9,30 @@ export const orgs = {
     client?: SupabaseClient<Database>
   ) {
     const supabase = client ?? createServerSupabaseClient();
-    const payload: Record<string, unknown> = {
+    const payload: Partial<Organization> & { owner_id: string } = {
       ...org,
       owner_id: userId
     };
 
-    const insertOrg = async (insertPayload: Record<string, unknown>) => {
+    const insertOrg = async (insertPayload: Partial<Organization>) => {
       const { data, error } = await supabase
         .from('organizations')
         .insert([insertPayload])
         .select('*')
         .single();
 
-      if (error) return { data: null, error };
-      return { data, error: null };
+      if (error) return { data: null as Organization | null, error };
+      return { data: data as Organization, error: null };
     };
 
     const { data, error } = await insertOrg(payload);
-    let createdOrg = data;
-    let insertError = error;
+    let createdOrg: Organization | null = data;
+    let insertError: any = error;
 
     if (insertError) {
       const message = insertError.message ?? String(insertError);
       const fallbackFields = ['slug', 'description', 'metadata'] as const;
-      const fallbackPayload = { ...payload };
+      const fallbackPayload: Partial<Organization> & { owner_id?: string } = { ...payload };
       let shouldRetry = false;
 
       for (const field of fallbackFields) {
@@ -43,7 +43,8 @@ export const orgs = {
           message.includes(`invalid column`)
         ) {
           shouldRetry = true;
-          delete fallbackPayload[field];
+          // delete with a cast to avoid strict index signature complaints
+          delete (fallbackPayload as any)[field];
         }
       }
 
