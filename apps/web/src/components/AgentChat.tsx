@@ -32,10 +32,9 @@ type ExecutionStep = {
 type Props = {
   agentId: string;
   conversationId: string;
-  userId: string;
 };
 
-export default function AgentChat({ agentId, conversationId, userId }: Props) {
+export default function AgentChat({ agentId, conversationId }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [userInput, setUserInput] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -114,7 +113,6 @@ export default function AgentChat({ agentId, conversationId, userId }: Props) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId,
           agentId,
           conversationId,
           message: userMessage.content,

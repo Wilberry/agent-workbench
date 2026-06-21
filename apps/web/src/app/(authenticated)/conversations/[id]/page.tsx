@@ -50,7 +50,7 @@ export default async function ConversationPage({ params }: Props) {
           </div>
         </div>
 
-        <AgentChat agentId={conversation.agent_id} conversationId={conversation.id} userId={user?.id ?? ''} />
+        <AgentChat agentId={conversation.agent_id} conversationId={conversation.id} />
       </div>
     </main>
   );
