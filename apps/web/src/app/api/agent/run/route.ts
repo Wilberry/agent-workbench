@@ -13,7 +13,7 @@ type RunAgentBody = {
   agentVersionId?: string | null;
 };
 
-export async function handleAgentRun(request: NextRequest, authClient = createRouteHandlerSupabaseClient({ headers, cookies })) {
+async function handleAgentRun(request: NextRequest, authClient = createRouteHandlerSupabaseClient({ headers, cookies })) {
   try {
     const body = (await request.json()) as RunAgentBody;
     const { agentId, conversationId, message, workflow, agentVersionId } = body;
