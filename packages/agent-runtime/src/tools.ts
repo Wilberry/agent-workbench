@@ -9,6 +9,11 @@ export type Tool = {
   execute: (args: Record<string, unknown>) => Promise<unknown>;
 };
 
+type ConversationSummaryMessage = {
+  role: string;
+  content: string;
+};
+
 export const toolList: Tool[] = [
   {
     name: 'search_memory',
@@ -48,7 +53,7 @@ export const toolList: Tool[] = [
 
       if (error) throw error;
 
-      const text = (messages ?? [])
+      const text = ((messages ?? []) as ConversationSummaryMessage[])
         .map((message) => `${message.role.toUpperCase()}: ${message.content}`)
         .join('\n');
 
