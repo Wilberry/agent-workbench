@@ -1,5 +1,7 @@
 Agent Workbench
 
+Release: v0.4.0 — Experimentation foundations and realtime observability
+
 Build, evaluate, observe and deploy AI agents on Supabase.
 
 Agent Workbench is an open-source developer platform for building, testing, evaluating, observing and deploying AI agents.
@@ -26,14 +28,14 @@ Agent Workbench brings these capabilities together in a single platform.
 
 ---
 
-Core Features
+Features
 
-Agent Development
-
-- Create and manage AI agents
-- Configure prompts and models
-- Build multi-step workflows
-- Support for LangGraph-based agents
+- Agent Development: create agents, version agents, compare versions, quick testing
+- Agent Operations: run history, replay runs, realtime monitoring, trace explorer
+- Evaluation: datasets, evaluation runs, analytics dashboard
+- Marketplace: publish and browse org-scoped agents
+- Organizations: multi-tenant orgs, billing dashboard, usage analytics
+- Infrastructure: Supabase, background workers, queue system, realtime subscriptions
 
 Evaluation Engine
 
@@ -50,6 +52,14 @@ Observability
 - Token usage analytics
 - Execution graph visualization
 - Failure analysis
+
+Quota & Billing
+
+- Organization-level run quota enforcement
+- Append-only usage ledger for accurate billing
+- Real-time billing metrics and aggregation
+- Usage tracking by event type (reserved, completed, failed)
+- Plan-based limits (Free: 5 runs, Pro: 1000 runs, Enterprise: unlimited)
 
 MCP Integration
 
@@ -153,6 +163,12 @@ infrastructure/
 docs/
 
 examples/
+
+---
+
+Local development
+
+See `docs/local-development.md` for hosted Supabase setup, optional local Supabase setup, and migration commands.
 
 ---
 

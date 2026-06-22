@@ -26,8 +26,18 @@ export default async function OrgsPage() {
     <main className="min-h-screen bg-slate-950 text-white p-6">
       <div className="mx-auto max-w-6xl space-y-6">
         <div className="rounded-3xl border border-slate-700 bg-slate-900 p-6">
-          <h1 className="text-3xl font-semibold">Organizations</h1>
-          <p className="mt-2 text-slate-400">Select an organization to manage agents, runs, marketplace listings, and billing.</p>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h1 className="text-3xl font-semibold">Organizations</h1>
+              <p className="mt-2 text-slate-400">Select an organization to manage agents, runs, marketplace listings, and billing.</p>
+            </div>
+            <Link
+              href="/orgs/new"
+              className="rounded-2xl border border-slate-700 bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400"
+            >
+              Create organization
+            </Link>
+          </div>
         </div>
 
         {(!organizations || organizations.length === 0) ? (

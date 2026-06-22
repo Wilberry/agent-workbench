@@ -4,15 +4,16 @@
 
 - Frontend: `apps/web` uses Next.js App Router with authenticated routes under `(authenticated)` and server-side Supabase session checks.
 - Auth: Supabase Auth via `@supabase/auth-helpers-nextjs`, browser `createBrowserSupabaseClient`, and session cookies.
-- Database: Supabase tables include `agent_runs`, `agent_run_jobs`, `organizations`, `organization_memberships`, `org_billing`, `tool_calls`, `marketplace_agents`, `conversations`, and agent metadata.
+- Database: Supabase tables include `agent_runs`, `agent_run_jobs`, `organizations`, `organization_memberships`, `org_billing`, `organization_usage_events`, `tool_calls`, `marketplace_agents`, `conversations`, and agent metadata.
 - SDK: shared `packages/sdk` exposes `agentRuns`, `orgs`, `tools`, `marketplace`, and realtime subscriptions.
 - Runtime: `packages/agent-runtime` implements queueing, worker processing, LLM provider integration, tool execution, and telemetry updates.
 - Observability: current UI surfaces include Run Detail, Trace Explorer, Org Billing, Org Trace Analytics, and marketplace browsing.
+- **NEW**: Quota enforcement and usage accounting with append-only ledger for accurate billing analytics.
 
 ## Current Gaps and Risks
 
 - Playwright end-to-end validation is incomplete, particularly Windows dev-server compatibility and analytics flow coverage.
-- Org-level telemetry and billing are surfaced, but need stronger verification and quota enforcement.
+- ~~Org-level telemetry and billing are surfaced, but need stronger verification and quota enforcement.~~ **RESOLVED**: Quota enforcement implemented with pre-enqueue validation.
 - Runtime observability is present in trace pages, but tooling is still basic and lacks search/filter maturity.
 - Provider abstraction exists, but fallback, quota handling, and multi-provider resilience are not fully hardened.
 - Role-based access and multi-org isolation are partially implemented; RLS and shared-auth boundaries need audit.
@@ -34,7 +35,7 @@
 3. Harden organization & access controls
    - Verify org membership flows in `packages/sdk/src/orgs.ts` and org pages in `apps/web/src/app/(authenticated)/orgs/*`
    - Audit RLS policies in `supabase/migrations` for tenant isolation
-   - Enforce billing/quota checks in runtime and runtime API paths
+   - ✅ **COMPLETED**: Enforce billing/quota checks in runtime and runtime API paths
    - Add org-scoped role labels and access restrictions where appropriate
 
 4. Stabilize runtime execution and monitoring
@@ -46,6 +47,31 @@
    - Add generic provider adapter and fallback logic in `packages/agent-runtime/src/llm`
    - Track provider-level errors, model metadata, and cost attribution consistently
    - Support provider selection per agent or org in configuration UI
+
+## Completed in This Sprint
+
+### Quota Enforcement & Usage Accounting
+
+**Deliverables:**
+- ✅ Migration `000016_organization_usage_events.sql` - Append-only ledger for all quota and usage events
+- ✅ SDK helpers in `packages/sdk/src/orgs.ts`:
+  - `validateQuota()` - Check org quota before execution
+  - `reserveQuota()` - Atomically reserve quota and record event
+  - `recordRunUsage()` - Record actual usage on completion (idempotent)
+  - `recordRunFailure()` - Record failed run events (idempotent)
+  - `getBillingMetrics()` - Derive billing metrics from ledger
+- ✅ API route integration - Enforce quota validation before enqueue in `POST /api/agent/run`
+- ✅ Error handling - Structured 403 response for quota exceeded
+- ✅ Run completion hooks - Record usage atomically in `markRunCompleted()` and `markRunFailed()`
+- ✅ Tests - Comprehensive test suite in `tests/security/quota-billing.spec.ts`
+- ✅ Documentation - Complete system documentation in `docs/quota-billing-system.md`
+
+**Policy:** Failed runs consume quota (no refund). This prevents abuse and aligns with resource costs.
+
+**Quota Limits:**
+- Free: 5 runs/month
+- Pro: 1,000 runs/month
+- Enterprise: Unlimited
 
 ## Priority Workstreams
 

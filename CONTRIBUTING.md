@@ -16,9 +16,10 @@ Before contributing, ensure you have:
 
 - Node.js 22+
 - pnpm 10+
-- Docker
 - Git
 - A Supabase account
+
+Docker is required only for local Supabase development. Hosted Supabase development works via `.env` configuration.
 
 ---
 
@@ -32,6 +33,8 @@ cd agent-workbench
 Install dependencies:
 
 pnpm install
+
+For local development details and Supabase setup, see `docs/local-development.md`.
 
 Start local development:
 

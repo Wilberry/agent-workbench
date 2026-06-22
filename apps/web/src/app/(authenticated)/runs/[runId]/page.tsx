@@ -2,8 +2,9 @@ import { cookies, headers } from 'next/headers';
 import Link from 'next/link';
 import type { Database } from '@/types/database';
 import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-nextjs';
-import { agentRuns } from '@agent-workbench/sdk';
-import RunDetailClient from '../../../../components/RunDetailClient';
+import { agentRuns, agents } from '@agent-workbench/sdk';
+import RunDetailLive from '../../../../components/RunDetailLive';
+import RunReplayActions from '@/components/RunReplayActions';
 
 type Params = {
   params: {
@@ -64,6 +65,35 @@ export default async function RunDetailPage({ params }: Params) {
 
   const trace = (run.execution_trace as AgentRun['execution_trace']) || [];
 
+  // Execution summary metrics
+  const stepCount = trace.length;
+  const toolCallCount = trace.flatMap((s) => (s.metadata?.toolName ? [s.metadata.toolName] : [])).length;
+  const traceEventCount = trace.length;
+  const completionPct = run.workflow && (run.workflow as string[]).length > 0 ? Math.round((run.current_step / (run.workflow as string[]).length) * 100) : 0;
+
+  // Failure diagnostics
+  const failedStep = trace.find((s) => s.status === 'failed');
+
+  // Replay history / retry count (look up recent runs for this user and count replays pointing to this run)
+  const userRuns = await agentRuns.listByUser(user.id, 200, supabase);
+  const replayHistory = (userRuns ?? []).filter((r: any) => r.replay_of_run_id === run.id);
+  const retryCount = replayHistory.length;
+
+  // Latest agent version id (if available)
+  let latestVersionId: string | null = null;
+  try {
+    if (run.agent_version_id) {
+      const ver = await agents.getVersion(run.agent_version_id as string);
+      if (ver?.agent_id) {
+        const latest = await agents.getLatestVersion(ver.agent_id);
+        latestVersionId = latest?.id ?? null;
+      }
+    }
+  } catch (e) {
+    // ignore failures to fetch versions
+    latestVersionId = null;
+  }
+
   return (
     <main className="min-h-screen bg-slate-950 text-white p-6">
       <div className="mx-auto max-w-6xl space-y-6">
@@ -90,7 +120,7 @@ export default async function RunDetailPage({ params }: Params) {
         </div>
 
         <div className="rounded-3xl border border-slate-700 bg-slate-900 p-6">
-          <div className="mb-4 flex items-center justify-between">
+          <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h1 className="text-3xl font-semibold">Workflow Execution</h1>
               <div className="mt-2 flex flex-wrap items-center gap-3">
@@ -104,13 +134,24 @@ export default async function RunDetailPage({ params }: Params) {
                 ))}
               </div>
             </div>
-            <span
-              className={`inline-block rounded-full px-4 py-2 text-lg font-semibold ${
-                statusColors[run.status as keyof typeof statusColors] || 'bg-slate-700 text-slate-100'
-              }`}
-            >
-              {run.status.charAt(0).toUpperCase() + run.status.slice(1)}
-            </span>
+            <div className="flex items-center gap-4">
+              <span
+                className={`inline-block rounded-full px-4 py-2 text-lg font-semibold ${
+                  statusColors[run.status as keyof typeof statusColors] || 'bg-slate-700 text-slate-100'
+                }`}
+              >
+                {run.status.charAt(0).toUpperCase() + run.status.slice(1)}
+              </span>
+              <div className="rounded-2xl border border-slate-700 bg-slate-900 p-3 text-sm text-slate-300">
+                <div>Run Overview</div>
+                <div className="mt-1 text-xs text-slate-400">
+                  Model: <span className="text-white">{run.model_name ?? 'Unknown'}</span>
+                </div>
+                <div className="text-xs text-slate-400">Tokens: <span className="text-white">{run.total_tokens ?? 0}</span></div>
+                <div className="text-xs text-slate-400">Est. cost: <span className="text-white">${(run.estimated_cost ?? 0).toFixed(4)}</span></div>
+                <div className="text-xs text-slate-400">Latency: <span className="text-white">{run.latency_ms ?? 0}ms</span></div>
+              </div>
+            </div>
           </div>
 
           <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
@@ -150,6 +191,79 @@ export default async function RunDetailPage({ params }: Params) {
             <div className="rounded-3xl bg-slate-950 p-4">
               <div className="text-sm text-slate-400">Latency</div>
               <div className="mt-2 text-xl font-semibold text-white">{run.latency_ms}ms</div>
+            </div>
+          </div>
+
+          <div className="mt-6 grid gap-4 sm:grid-cols-3">
+            <div className="rounded-3xl bg-slate-950 p-4">
+              <div className="text-sm text-slate-400">Step count</div>
+              <div className="mt-2 text-xl font-semibold text-white">{stepCount}</div>
+            </div>
+            <div className="rounded-3xl bg-slate-950 p-4">
+              <div className="text-sm text-slate-400">Tool calls</div>
+              <div className="mt-2 text-xl font-semibold text-white">{toolCallCount}</div>
+            </div>
+            <div className="rounded-3xl bg-slate-950 p-4">
+              <div className="text-sm text-slate-400">Trace events</div>
+              <div className="mt-2 text-xl font-semibold text-white">{traceEventCount}</div>
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-3xl border border-slate-700 bg-slate-900 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm text-slate-400">Execution summary</div>
+                <div className="mt-1 text-white font-semibold">Completion: {completionPct}%</div>
+              </div>
+              <div className="w-1/3">
+                <div className="h-2 rounded bg-slate-800">
+                  <div className="h-2 rounded bg-emerald-500" style={{ width: `${Math.min(100, completionPct)}%` }} />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-200">Actions</h3>
+              <div className="mt-3">
+                <RunReplayActions runId={run.id} latestVersionId={latestVersionId} />
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-semibold text-slate-200">Failure diagnostics</h3>
+              <div className="mt-3 text-sm text-slate-300">
+                {run.error_message ? (
+                  <div className="rounded-lg border border-red-700 bg-red-950/20 p-3">
+                    <div className="font-semibold text-red-200">Error</div>
+                    <div className="text-sm text-red-100 mt-1">{run.error_message}</div>
+                  </div>
+                ) : (
+                  <div className="text-slate-400">No top-level error.</div>
+                )}
+
+                <div className="mt-3">
+                  <div className="text-xs text-slate-400">Failed step</div>
+                  <div className="text-sm text-white">{failedStep ? failedStep.step : 'None'}</div>
+                </div>
+                <div className="mt-2">
+                  <div className="text-xs text-slate-400">Retry count</div>
+                  <div className="text-sm text-white">{retryCount}</div>
+                </div>
+                {retryCount > 0 && (
+                  <div className="mt-3">
+                    <div className="text-xs text-slate-400">Replay history</div>
+                    <div className="mt-2 space-y-2">
+                      {replayHistory.map((r: any) => (
+                        <Link key={r.id} href={`/runs/${r.id}`} className="block text-sm text-emerald-300 hover:underline">
+                          Replay {r.id.slice(0, 8)} — {r.status}
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -193,88 +307,10 @@ export default async function RunDetailPage({ params }: Params) {
         )}
 
         <div className="space-y-3">
-          <h2 className="text-xl font-semibold">Execution Timeline</h2>
+          <h2 className="text-xl font-semibold">Execution Timeline (Live)</h2>
 
-          {trace.length === 0 ? (
-            <div className="rounded-3xl border border-slate-700 bg-slate-900 p-6 text-center text-slate-400">
-              No steps executed yet.
-            </div>
-          ) : (
-            trace.map((step) => (
-              <details
-                key={step.id}
-                className="rounded-2xl border border-slate-700 bg-slate-900"
-                open={trace.length === 1}
-              >
-                <summary className="cursor-pointer px-4 py-3 font-semibold text-slate-100">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="text-emerald-400">{step.step}</span>
-                      {step.status === 'failed' && (
-                        <span className="ml-2 inline-block rounded bg-red-900 px-2 py-1 text-xs text-red-100">
-                          Failed
-                        </span>
-                      )}
-                      {step.status === 'completed' && (
-                        <span className="ml-2 inline-block rounded bg-emerald-900 px-2 py-1 text-xs text-emerald-100">
-                          Completed
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-xs text-slate-400">
-                      {new Date(step.timestamp).toLocaleTimeString()}
-                    </div>
-                  </div>
-                </summary>
-
-                <div className="space-y-3 border-t border-slate-700 px-4 py-3">
-                  {step.input && (
-                    <div>
-                      <div className="mb-1 text-xs font-semibold text-slate-300">Input:</div>
-                      <div className="rounded bg-slate-950 p-2 text-sm text-slate-100">{step.input}</div>
-                    </div>
-                  )}
-
-                  {step.output && (
-                    <div>
-                      <div className="mb-1 text-xs font-semibold text-slate-300">Output:</div>
-                      <div className="rounded bg-slate-950 p-2 text-sm text-slate-100 whitespace-pre-wrap">
-                        {step.output}
-                      </div>
-                    </div>
-                  )}
-
-                  {step.error && (
-                    <div>
-                      <div className="mb-1 text-xs font-semibold text-red-400">Error:</div>
-                      <div className="rounded bg-red-950 p-2 text-sm text-red-100">{step.error}</div>
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-2 text-xs text-slate-400">
-                    <div>
-                      <div className="font-semibold">Tool called:</div>
-                      <div>{step.metadata?.toolName ?? 'None'}</div>
-                    </div>
-                    <div>
-                      <div className="font-semibold">Tokens:</div>
-                      <div>{step.metadata?.tokens ?? 'N/A'}</div>
-                    </div>
-                    <div>
-                      <div className="font-semibold">Memory used:</div>
-                      <div>{step.metadata?.model ? 'Yes' : 'Unknown'}</div>
-                    </div>
-                    <div>
-                      <div className="font-semibold">Status:</div>
-                      <div>{step.status || 'pending'}</div>
-                    </div>
-                  </div>
-                </div>
-              </details>
-            ))
-          )}
           <div className="mt-4">
-            <RunDetailClient runId={run.id} initialTrace={trace} initialStatus={run.status} />
+            <RunDetailLive runId={run.id} initialRun={run} initialTrace={trace} />
           </div>
         </div>
       </div>

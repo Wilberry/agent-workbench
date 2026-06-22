@@ -1,5 +1,5 @@
 import type { User } from '@supabase/supabase-js';
-import { createServerSupabaseClient } from '@agent-workbench/sdk';
+import { agents, createServerSupabaseClient } from '@agent-workbench/sdk';
 import type { Database } from '@agent-workbench/sdk';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -10,6 +10,16 @@ export class ExecutionAuthorizationError extends Error {
     super(message);
     this.name = 'ExecutionAuthorizationError';
     this.status = status;
+  }
+}
+
+export class QuotaExceededError extends Error {
+  status = 403;
+  code = 'QUOTA_EXCEEDED';
+
+  constructor(message: string = 'Organization has reached its run limit') {
+    super(message);
+    this.name = 'QuotaExceededError';
   }
 }
 
@@ -104,6 +114,8 @@ export async function authorizeExecution({ user, agentId, conversationId, agentV
     }
 
     agentVersion = version;
+  } else {
+    agentVersion = await agents.getLatestVersion(agent.id, supabase);
   }
 
   return {

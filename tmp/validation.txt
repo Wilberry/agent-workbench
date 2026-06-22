@@ -1,0 +1,128 @@
+
+> agent-workbench@0.1.0 lint C:\Users\wilson\Desktop\Projects\agent-workbench
+> turbo run lint
+
+ΓÇó Packages in scope: @agent-workbench/agent-runtime, @agent-workbench/evals, @agent-workbench/mcp, @agent-workbench/sdk, @agent-workbench/ui, web
+ΓÇó Running lint in 6 packages
+ΓÇó Remote caching disabled
+web:lint: cache miss, executing 7f71a54038c03b9a
+web:lint: 
+web:lint: > web@0.1.0 lint C:\Users\wilson\Desktop\Projects\agent-workbench\apps\web
+web:lint: > next lint
+web:lint: 
+web:lint: Γ£ö No ESLint warnings or errors
+
+ Tasks:    1 successful, 1 total
+Cached:    0 cached, 1 total
+  Time:    9.956s 
+
+
+> agent-workbench@0.1.0 typecheck C:\Users\wilson\Desktop\Projects\agent-workbench
+> tsc -b && tsc -p apps/web/tsconfig.json --noEmit
+
+
+> agent-workbench@0.1.0 build C:\Users\wilson\Desktop\Projects\agent-workbench
+> turbo run build
+
+ΓÇó Packages in scope: @agent-workbench/agent-runtime, @agent-workbench/evals, @agent-workbench/mcp, @agent-workbench/sdk, @agent-workbench/ui, web
+ΓÇó Running build in 6 packages
+ΓÇó Remote caching disabled
+@agent-workbench/sdk:build: cache hit, replaying logs 00787bcc4caa8b56
+@agent-workbench/sdk:build: 
+@agent-workbench/sdk:build: > @agent-workbench/sdk@0.1.0 build C:\Users\wilson\Desktop\Projects\agent-workbench\packages\sdk
+@agent-workbench/sdk:build: > tsc -b
+@agent-workbench/sdk:build: 
+web:build: cache miss, executing 92d5fd48551f5b42
+@agent-workbench/agent-runtime:build: cache hit, replaying logs 3f5c7b2f19d2b9aa
+@agent-workbench/agent-runtime:build: 
+@agent-workbench/agent-runtime:build: > @agent-workbench/agent-runtime@0.1.0 build C:\Users\wilson\Desktop\Projects\agent-workbench\packages\agent-runtime
+@agent-workbench/agent-runtime:build: > tsc -b
+@agent-workbench/agent-runtime:build: 
+web:build: 
+web:build: > web@0.1.0 build C:\Users\wilson\Desktop\Projects\agent-workbench\apps\web
+web:build: > node --max-old-space-size=4096 ./node_modules/next/dist/bin/next build
+web:build: 
+web:build:   Γû▓ Next.js 14.2.0
+web:build:   - Environments: .env
+web:build:   - Experiments (use with caution):
+web:build:     ┬╖ typedRoutes
+web:build: 
+web:build:    Creating an optimized production build ...
+web:build:  Γ£ô Compiled successfully
+web:build:    Skipping linting
+web:build:    Checking validity of types ...
+web:build:    Collecting page data ...
+web:build:    Generating static pages (0/25) ...
+web:build:    Generating static pages (6/25) 
+web:build:    Generating static pages (12/25) 
+web:build:    Generating static pages (18/25) 
+web:build:  Γ£ô Generating static pages (25/25)
+web:build:    Finalizing page optimization ...
+web:build:    Collecting build traces ...
+web:build: 
+web:build: Route (app)                                       Size     First Load JS
+web:build: Γöî Γùï /                                             231 B            94 kB
+web:build: Γö£ Γùï /_not-found                                   875 B          87.8 kB
+web:build: Γö£ ╞Æ /agents                                       231 B            94 kB
+web:build: Γö£ ╞Æ /agents/[id]                                  4.74 kB         163 kB
+web:build: Γö£ ╞Æ /agents/[id]/edit                             147 B          87.1 kB
+web:build: Γö£ ╞Æ /agents/[id]/versions/new                     231 B            94 kB
+web:build: Γö£ ╞Æ /agents/new                                   231 B            94 kB
+web:build: Γö£ ╞Æ /api/agent/replay                             0 B                0 B
+web:build: Γö£ ╞Æ /api/agent/run                                0 B                0 B
+web:build: Γö£ ╞Æ /api/agent/run/[runId]                        0 B                0 B
+web:build: Γö£ ╞Æ /api/agent/run/[runId]/replay                 0 B                0 B
+web:build: Γö£ ╞Æ /api/conversations/[conversationId]/messages  0 B                0 B
+web:build: Γö£ ╞Æ /api/evaluations/datasets                     0 B                0 B
+web:build: Γö£ ╞Æ /api/evaluations/datasets/[datasetId]         0 B                0 B
+web:build: Γö£ ╞Æ /api/evaluations/runs                         0 B                0 B
+web:build: Γö£ ╞Æ /api/evaluations/runs/[runId]                 0 B                0 B
+web:build: Γö£ ╞Æ /api/evaluations/runs/[runId]/results         0 B                0 B
+web:build: Γö£ ╞Æ /api/marketplace/agents                       0 B                0 B
+web:build: Γö£ ╞Æ /api/org/[orgId]/agents                       0 B                0 B
+web:build: Γö£ ╞Æ /api/org/[orgId]/agents/[agentId]/publish     0 B                0 B
+web:build: Γö£ ╞Æ /api/tools                                    0 B                0 B
+web:build: Γö£ ╞Æ /api/tools/[id]                               0 B                0 B
+web:build: Γö£ ╞Æ /conversations                                231 B            94 kB
+web:build: Γö£ ╞Æ /conversations/[id]                           1.9 kB          154 kB
+web:build: Γö£ ╞Æ /evaluations                                  1.79 kB        95.5 kB
+web:build: Γö£ ╞Æ /evaluations/compare                          1.07 kB        94.8 kB
+web:build: Γö£ ╞Æ /evaluations/datasets                         1.85 kB        95.6 kB
+web:build: Γö£ ╞Æ /evaluations/datasets/[datasetId]             1.18 kB        94.9 kB
+web:build: Γö£ ╞Æ /evaluations/runs                             231 B            94 kB
+web:build: Γö£ ╞Æ /evaluations/runs/[runId]                     1.18 kB        94.9 kB
+web:build: Γö£ Γùï /login                                        1 kB            160 kB
+web:build: Γö£ ╞Æ /marketplace                                  231 B            94 kB
+web:build: Γö£ ╞Æ /marketplace/[versionId]                      231 B            94 kB
+web:build: Γö£ ╞Æ /orgs                                         231 B            94 kB
+web:build: Γö£ ╞Æ /orgs/[orgId]                                 231 B            94 kB
+web:build: Γö£ ╞Æ /orgs/[orgId]/agents                          231 B            94 kB
+web:build: Γö£ ╞Æ /orgs/[orgId]/billing                         147 B          87.1 kB
+web:build: Γö£ ╞Æ /orgs/[orgId]/marketplace                     632 B          94.4 kB
+web:build: Γö£ ╞Æ /orgs/[orgId]/runs                            231 B            94 kB
+web:build: Γö£ ╞Æ /orgs/[orgId]/traces                          231 B            94 kB
+web:build: Γö£ ╞Æ /orgs/new                                     231 B            94 kB
+web:build: Γö£ ╞Æ /runs                                         231 B            94 kB
+web:build: Γö£ ╞Æ /runs/[runId]                                 1.84 kB         160 kB
+web:build: Γö£ ╞Æ /runs/[runId]/replay                          1.17 kB        94.9 kB
+web:build: Γö£ Γùï /signup                                       1.07 kB         160 kB
+web:build: Γö£ ╞Æ /tools                                        231 B            94 kB
+web:build: Γö£ ╞Æ /tools/[id]                                   231 B            94 kB
+web:build: Γö£ ╞Æ /tools/[id]/edit                              908 B          87.9 kB
+web:build: Γö£ ╞Æ /tools/new                                    908 B          87.9 kB
+web:build: Γöö ╞Æ /traces                                       231 B            94 kB
+web:build: + First Load JS shared by all                     87 kB
+web:build:   Γö£ chunks/8588-c0acaf844e2d90dd.js               31.4 kB
+web:build:   Γö£ chunks/d744563a-3eddbcbac31e69a2.js           53.6 kB
+web:build:   Γöö other shared chunks (total)                   1.96 kB
+web:build: 
+web:build: 
+web:build: Γùï  (Static)   prerendered as static content
+web:build: ╞Æ  (Dynamic)  server-rendered on demand
+web:build: 
+
+ Tasks:    3 successful, 3 total
+Cached:    2 cached, 3 total
+  Time:    1m53.323s 
+
+DONE

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { createServerSupabaseClient, agents, agentRuns } from '@agent-workbench/sdk';
-import { enqueueAgentRun } from '@agent-workbench/agent-runtime';
+import { enqueueAgentRun, processAgentRunJob } from '@agent-workbench/agent-runtime';
 import { createTestAuthUser } from '../utils/createTestAuthUser';
 
 describe('Versioning Integration with Runtime', () => {
@@ -146,6 +146,70 @@ describe('Versioning Integration with Runtime', () => {
 
       expect(run1.agent_version_id).toBe(testVersionId);
       expect(run2.agent_version_id).toBe(version2.id);
+    });
+
+    it('should execute the pinned agent version workflow even when a newer workflow exists in queue', async () => {
+      const originalVersion = await agents.createVersion(testAgentId, testUserId, {
+        system_prompt: 'Pinned version prompt',
+        model: 'gpt-4',
+        tools: [],
+        workflow: ['planner', 'executor']
+      });
+
+      const newerVersion = await agents.createVersion(testAgentId, testUserId, {
+        system_prompt: 'Newer version prompt',
+        model: 'gpt-4-turbo',
+        tools: [],
+        workflow: ['planner', 'executor', 'reviewer']
+      });
+
+      const { data: runRecord, error: runError } = await supabase
+        .from('agent_runs')
+        .insert([{
+          user_id: testUserId,
+          conversation_id: testConversationId,
+          workflow: newerVersion.workflow,
+          agent_version_id: originalVersion.id,
+          organization_id: testOrganizationId,
+          status: 'pending'
+        }])
+        .select('id')
+        .single();
+
+      if (runError || !runRecord?.id) {
+        throw runError ?? new Error('Failed to create pinned version run');
+      }
+
+      const runId = runRecord.id;
+      const { error: queueError } = await supabase.from('agent_run_jobs').insert([{
+        run_id: runId,
+        user_id: testUserId,
+        conversation_id: testConversationId,
+        message: 'Confirm pinned workflow execution.',
+        workflow: newerVersion.workflow,
+        memories: [],
+        status: 'pending'
+      }]);
+
+      if (queueError) {
+        throw queueError;
+      }
+
+      await processAgentRunJob({
+        runId,
+        userId: testUserId,
+        conversationId: testConversationId,
+        message: 'Confirm pinned workflow execution.',
+        workflow: newerVersion.workflow,
+        memories: []
+      });
+
+      const run = await agentRuns.get(runId);
+      expect(run).toBeDefined();
+      expect(run?.status).toBe('completed');
+      expect(Array.isArray(run?.execution_trace)).toBe(true);
+      expect(run?.execution_trace?.length).toBe(originalVersion.workflow.length);
+      expect(run?.execution_trace?.map((step) => step.step)).toEqual(['planner', 'executor']);
     });
   });
 

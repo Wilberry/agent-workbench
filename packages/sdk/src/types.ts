@@ -59,6 +59,53 @@ export type OrganizationMembership = {
   created_at: string;
 };
 
+export type EvaluationDataset = {
+  id: string;
+  user_id: string;
+  organization_id?: string | null;
+  agent_id?: string | null;
+  name: string;
+  description: string | null;
+  tags: string[];
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type EvaluationDatasetExample = {
+  id: string;
+  dataset_id: string;
+  example_index: number;
+  input: Record<string, unknown>;
+  expected_output: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type EvaluationRun = {
+  id: string;
+  dataset_id: string;
+  agent_version_id: string;
+  user_id: string;
+  organization_id?: string | null;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  summary: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type EvaluationRunResult = {
+  id: string;
+  evaluation_run_id: string;
+  example_id: string;
+  agent_output: Record<string, unknown>;
+  exact_match: boolean;
+  details: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
 export type MarketplaceAgent = {
   id: string;
   org_id: string;
@@ -300,6 +347,59 @@ export type Database = {
         created_at: string;
         updated_at: string;
       }>;
+      evaluation_datasets: SupabaseTable<{
+        id: string;
+        user_id: string;
+        organization_id?: string | null;
+        agent_id?: string | null;
+        name: string;
+        description: string | null;
+        tags: string[];
+        metadata: Record<string, unknown>;
+        created_at: string;
+        updated_at: string;
+      }>;
+      evaluation_dataset_examples: SupabaseTable<{
+        id: string;
+        dataset_id: string;
+        example_index: number;
+        input: Record<string, unknown>;
+        expected_output: Record<string, unknown>;
+        metadata: Record<string, unknown>;
+        created_at: string;
+        updated_at: string;
+      }>;
+      evaluation_runs: SupabaseTable<{
+        id: string;
+        dataset_id: string;
+        agent_version_id: string;
+        user_id: string;
+        organization_id?: string | null;
+        status: 'pending' | 'running' | 'completed' | 'failed';
+        summary: Record<string, unknown>;
+        created_at: string;
+        updated_at: string;
+      }>;
+      evaluation_run_results: SupabaseTable<{
+        id: string;
+        evaluation_run_id: string;
+        example_id: string;
+        agent_output: Record<string, unknown>;
+        exact_match: boolean;
+        details: Record<string, unknown>;
+        created_at: string;
+        updated_at: string;
+      }>;
+      organization_usage_events: SupabaseTable<{
+        id: string;
+        organization_id: string;
+        run_id: string | null;
+        event_type: 'quota_reserved' | 'run_completed' | 'run_failed' | 'quota_refunded';
+        tokens: number;
+        estimated_cost: number;
+        metadata: Record<string, unknown>;
+        created_at: string;
+      }>;
     };
     Views: {
       agent_latest_versions: {
@@ -344,6 +444,47 @@ export type Database = {
         };
         Returns: Array<{
           id: string;
+        }>;
+      };
+      get_organization_quota_usage: {
+        Args: {
+          org_id: string;
+          event_type_filter?: string;
+        };
+        Returns: Array<{
+          total_reserved: number;
+          total_refunded: number;
+          net_reserved: number;
+          total_cost: number;
+        }>;
+      };
+      reserve_organization_quota: {
+        Args: {
+          organization_id: string;
+          run_id: string;
+          estimated_cost?: number;
+        };
+        Returns: Array<{
+          id: string;
+          organization_id: string;
+          run_id: string | null;
+          event_type: 'quota_reserved' | 'run_completed' | 'run_failed' | 'quota_refunded';
+          tokens: number;
+          estimated_cost: number;
+          metadata: Record<string, unknown>;
+          created_at: string;
+        }>;
+      };
+      get_organization_billing_metrics: {
+        Args: {
+          org_id: string;
+        };
+        Returns: Array<{
+          total_runs: number;
+          total_tokens: number;
+          total_cost: number;
+          completed_runs: number;
+          failed_runs: number;
         }>;
       };
       match_messages: {

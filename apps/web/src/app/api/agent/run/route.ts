@@ -1,9 +1,10 @@
 import { NextRequest } from 'next/server';
 import { cookies, headers } from 'next/headers';
+import { randomUUID } from 'crypto';
 import { createRouteHandlerSupabaseClient } from '@supabase/auth-helpers-nextjs';
 import { enqueueAgentRun, getRelevantMemories } from '@agent-workbench/agent-runtime';
-import { createServerSupabaseClient } from '@agent-workbench/sdk';
-import { authorizeExecution, ExecutionAuthorizationError } from '@/lib/agentExecutionAuth';
+import { createServerSupabaseClient, orgs } from '@agent-workbench/sdk';
+import { authorizeExecution, ExecutionAuthorizationError, QuotaExceededError } from '@/lib/agentExecutionAuth';
 
 type RunAgentBody = {
   agentId: string;
@@ -42,6 +43,8 @@ async function handleAgentRun(request: NextRequest, authClient = createRouteHand
       agentVersionId
     });
 
+    const organizationId = authorization.agent.organization_id ?? null;
+
     const supabase = createServerSupabaseClient();
 
     const { data: userMessageRow, error: userMessageError } = await supabase
@@ -55,17 +58,24 @@ async function handleAgentRun(request: NextRequest, authClient = createRouteHand
       return new Response(JSON.stringify({ error: 'Failed to save user message' }), { status: 500 });
     }
 
-    const memories = await getRelevantMemories({ conversationId: authorization.conversation.id, query: message });
+    const requestedWorkflow = Array.isArray(workflow) && workflow.length > 0
+      ? workflow
+      : authorization.agentVersion?.workflow ?? ['Planner', 'Executor', 'Reviewer'];
 
-    const runId = await enqueueAgentRun({
-      runId: '',
+    const memories = await getRelevantMemories({ conversationId: authorization.conversation.id, query: message });
+    const runId = randomUUID();
+
+    await orgs.reserveQuota(organizationId, runId, { estimatedCost: 0 });
+
+    await enqueueAgentRun({
+      runId,
       userId: authenticatedUserId,
       conversationId: authorization.conversation.id,
       message,
-      workflow: workflow ?? ['Planner', 'Executor', 'Reviewer'],
+      workflow: requestedWorkflow,
       memories,
       agentVersionId: authorization.agentVersion?.id ?? null,
-      organizationId: authorization.agent.organization_id ?? null
+      organizationId: organizationId
     });
 
     return new Response(
@@ -82,6 +92,13 @@ async function handleAgentRun(request: NextRequest, authClient = createRouteHand
   } catch (error) {
     if (error instanceof ExecutionAuthorizationError) {
       return new Response(JSON.stringify({ error: error.message }), { status: error.status });
+    }
+
+    if (error instanceof QuotaExceededError) {
+      return new Response(
+        JSON.stringify({ error: error.code, message: error.message }),
+        { status: error.status }
+      );
     }
 
     return new Response(JSON.stringify({ error: (error as Error).message }), { status: 500 });

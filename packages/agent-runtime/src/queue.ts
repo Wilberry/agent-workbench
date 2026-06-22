@@ -45,18 +45,19 @@ const processing = new Set<string>();
 export async function enqueueAgentRun(job: AgentRunQueueJob): Promise<string> {
   const supabase = createServerSupabaseClient();
 
+  const runPayload = {
+    user_id: job.userId,
+    conversation_id: job.conversationId,
+    workflow: job.workflow,
+    agent_version_id: job.agentVersionId ?? null,
+    organization_id: job.organizationId ?? null,
+    status: 'pending',
+    ...(job.runId ? { id: job.runId } : {})
+  } as const;
+
   const { data: run, error: runError } = await supabase
     .from('agent_runs')
-    .insert([
-      {
-        user_id: job.userId,
-        conversation_id: job.conversationId,
-        workflow: job.workflow,
-        agent_version_id: job.agentVersionId ?? null,
-        organization_id: job.organizationId ?? null,
-        status: 'pending'
-      }
-    ])
+    .insert([runPayload])
     .select('id')
     .single();
 
@@ -407,6 +408,18 @@ export async function persistExecutionStep(runId: string, step: ExecutionStep): 
 export async function markRunCompleted(runId: string): Promise<void> {
   const supabase = createServerSupabaseClient();
 
+  // Fetch run to get tokens and cost for usage recording
+  const { data: run, error: fetchError } = await supabase
+    .from('agent_runs')
+    .select('id, organization_id, total_tokens, estimated_cost, status')
+    .eq('id', runId)
+    .single();
+
+  if (fetchError || !run) {
+    console.warn('Failed to fetch run for usage recording:', fetchError?.message ?? 'not found');
+  }
+
+  // Update run status
   const { error } = await supabase
     .from('agent_runs')
     .update({ status: 'completed' })
@@ -414,6 +427,24 @@ export async function markRunCompleted(runId: string): Promise<void> {
 
   if (error) {
     throw error;
+  }
+
+  // Record usage in ledger if organization exists (idempotent)
+  if (run?.organization_id) {
+    try {
+      const { orgs } = await import('@agent-workbench/sdk');
+      await orgs.recordUsageOnCompletion(
+        run.organization_id,
+        runId,
+        {
+          tokens: run.total_tokens ?? 0,
+          estimatedCost: run.estimated_cost ?? 0
+        }
+      );
+    } catch (usageError) {
+      console.warn('Failed to record run usage:', usageError instanceof Error ? usageError.message : String(usageError));
+      // Non-fatal: continue even if usage recording fails
+    }
   }
 
   try {
@@ -431,6 +462,17 @@ export async function markRunCompleted(runId: string): Promise<void> {
 export async function markRunFailed(runId: string, errorMessage: string): Promise<void> {
   const supabase = createServerSupabaseClient();
 
+  // Fetch run to record failure
+  const { data: run, error: fetchError } = await supabase
+    .from('agent_runs')
+    .select('id, organization_id, status')
+    .eq('id', runId)
+    .single();
+
+  if (fetchError) {
+    console.warn('Failed to fetch run for failure recording:', fetchError.message);
+  }
+
   const { error } = await supabase
     .from('agent_runs')
     .update({ status: 'failed', error_message: errorMessage })
@@ -438,6 +480,17 @@ export async function markRunFailed(runId: string, errorMessage: string): Promis
 
   if (error) {
     throw error;
+  }
+
+  // Record failure in ledger if organization exists
+  if (run?.organization_id) {
+    try {
+      const { orgs } = await import('@agent-workbench/sdk');
+      await orgs.recordRunFailure(run.organization_id, runId, { reason: errorMessage });
+    } catch (failureError) {
+      console.warn('Failed to record run failure:', failureError instanceof Error ? failureError.message : String(failureError));
+      // Non-fatal: continue even if failure recording fails
+    }
   }
 
   try {

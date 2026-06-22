@@ -27,6 +27,7 @@ type AgentWorkflowInput = {
   message: string;
   workflow?: string[];
   memories?: MemorySnippet[];
+  systemPrompt?: string;
   runId?: string;
 };
 
@@ -88,7 +89,7 @@ function roleDescription(role: string) {
 }
 
 export async function runMultiAgentWorkflow(
-  { userId, conversationId, message, workflow, memories = [], runId }: AgentWorkflowInput,
+  { userId, conversationId, message, workflow, memories = [], systemPrompt, runId }: AgentWorkflowInput,
   modelOverride?: string
 ): Promise<AgentWorkflowResult> {
   const agentRoles = workflow && workflow.length > 0 ? workflow : ['Planner', 'Executor', 'Reviewer'];
@@ -104,10 +105,11 @@ export async function runMultiAgentWorkflow(
   const episode: string[] = [];
 
   for (const role of agentRoles) {
+    const systemContent = `You are ${role}. ${roleDescription(role)} Use available memory and tools when appropriate.`;
     const rolePrompt = [
       {
         role: 'system',
-        content: `You are ${role}. ${roleDescription(role)} Use available memory and tools when appropriate.`
+        content: systemPrompt ? `${systemPrompt}\n\n${systemContent}` : systemContent
       },
       {
         role: 'user',

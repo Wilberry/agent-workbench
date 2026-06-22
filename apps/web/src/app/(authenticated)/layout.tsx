@@ -39,6 +39,12 @@ export default async function AuthenticatedLayout({ children }: { children: Reac
               Traces
             </Link>
             <Link
+              href={{ pathname: '/evaluations' }}
+              className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-emerald-500"
+            >
+              Evaluations
+            </Link>
+            <Link
               href="/runs"
               className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-emerald-500"
             >

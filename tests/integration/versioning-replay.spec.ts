@@ -191,6 +191,25 @@ describe('Agent Versioning and Replay', () => {
       // Should use original version if not specified
       expect(replay.agent_version_id).toBe(original.agent_version_id);
     });
+
+    it('should use the requested version workflow when replaying a run', async () => {
+      const version3 = await agents.createVersion(testAgentId, testUserId, {
+        system_prompt: 'Replay workflow version',
+        model: 'gpt-4',
+        tools: [],
+        workflow: ['planner', 'executor', 'reviewer']
+      });
+
+      const replayRun = await agentRuns.replayRun(originalRunId, {
+        versionId: version3.id,
+        reason: 'Replay with version workflow changes'
+      });
+
+      expect(replayRun.replay_of_run_id).toBe(originalRunId);
+      expect(replayRun.agent_version_id).toBe(version3.id);
+      expect(replayRun.workflow).toEqual(version3.workflow);
+      expect(replayRun.is_replay).toBe(true);
+    });
   });
 
   describe('End-to-end: Create, Version, and Replay', () => {

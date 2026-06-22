@@ -122,6 +122,69 @@ export default async function TraceExplorerPage({
               View run history
             </Link>
           </div>
+
+          <form method="get" className="mt-6 grid gap-4 sm:grid-cols-4">
+            <label className="block">
+              <span className="text-sm font-semibold text-slate-200">Status</span>
+              <select
+                name="status"
+                defaultValue={statusFilter}
+                className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-emerald-500"
+              >
+                <option value="">All statuses</option>
+                <option value="pending">Pending</option>
+                <option value="running">Running</option>
+                <option value="completed">Completed</option>
+                <option value="failed">Failed</option>
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="text-sm font-semibold text-slate-200">Tool</span>
+              <select
+                name="tool"
+                defaultValue={toolFilter}
+                className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-emerald-500"
+              >
+                <option value="">Any tool</option>
+                {tools.map((tool) => (
+                  <option key={tool} value={tool}>
+                    {tool}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block sm:col-span-2">
+              <span className="text-sm font-semibold text-slate-200">Search</span>
+              <input
+                type="search"
+                name="q"
+                defaultValue={searchParams?.q ?? ''}
+                placeholder="Search run IDs or workflow names"
+                className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-emerald-500"
+              />
+            </label>
+
+            <div className="sm:col-span-4 flex flex-wrap items-end gap-3">
+              <button
+                type="submit"
+                className="rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950 hover:bg-emerald-400"
+              >
+                Apply filters
+              </button>
+              <Link
+                href="/traces"
+                className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-semibold text-slate-200 hover:border-emerald-500"
+              >
+                Clear filters
+              </Link>
+            </div>
+          </form>
+        </div>
+
+        <div className="rounded-3xl border border-slate-700 bg-slate-900 p-4 text-sm text-slate-300">
+          Showing <span className="font-semibold text-white">{runSummaries.length}</span> of <span className="font-semibold text-white">{runs.length}</span> runs.
         </div>
 
         {runSummaries.length === 0 ? (

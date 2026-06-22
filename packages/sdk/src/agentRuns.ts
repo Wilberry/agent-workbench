@@ -1,4 +1,5 @@
 import { createServerSupabaseClient } from './supabaseClient';
+import { agents } from './agents';
 import type { AgentRun } from './types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './types';
@@ -153,6 +154,18 @@ export const agentRuns = {
       throw fetchError ?? new Error('Original run not found');
     }
 
+    let replayWorkflow = originalRun.workflow;
+
+    if (options.versionId) {
+      const versionToUse = await agents.getVersion(options.versionId, supabase);
+      if (!versionToUse) {
+        throw new Error('Requested replay agent version not found');
+      }
+      if (Array.isArray(versionToUse.workflow) && versionToUse.workflow.length > 0) {
+        replayWorkflow = versionToUse.workflow;
+      }
+    }
+
     // Create a new run as a replay
     const { data: newRun, error: createError } = await supabase
       .from('agent_runs')
@@ -160,11 +173,12 @@ export const agentRuns = {
         {
           user_id: originalRun.user_id,
           conversation_id: originalRun.conversation_id,
-          workflow: originalRun.workflow,
+          workflow: replayWorkflow,
           organization_id: originalRun.organization_id ?? null,
           agent_version_id: options.versionId ?? originalRun.agent_version_id ?? null,
           replay_of_run_id: originalRunId,
           replay_reason: options.reason ?? 'manual replay',
+          is_replay: true,
           status: 'pending'
         }
       ])

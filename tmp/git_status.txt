@@ -1,0 +1,100 @@
+1 .M N... 100644 100644 100644 d6e60c67c4a3687faca584fc62adb2879fe829e3 d6e60c67c4a3687faca584fc62adb2879fe829e3 CONTRIBUTING.md
+1 .M N... 100644 100644 100644 496971a2671a94688515bfcd4e8fe50570f30ef4 496971a2671a94688515bfcd4e8fe50570f30ef4 README.md
+1 .M N... 100644 100644 100644 b255e370c3a088a95d5736e89d2795ec07b2629f b255e370c3a088a95d5736e89d2795ec07b2629f apps/web/src/app/(authenticated)/agents/[id]/page.tsx
+1 .M N... 100644 100644 100644 888a55d5010d7c221994348cc091db7085ae510b 888a55d5010d7c221994348cc091db7085ae510b apps/web/src/app/(authenticated)/layout.tsx
+1 .M N... 100644 100644 100644 c079da1590c1bf82f5d8baf926a1080eae2aef33 c079da1590c1bf82f5d8baf926a1080eae2aef33 apps/web/src/app/(authenticated)/orgs/[orgId]/page.tsx
+1 .M N... 100644 100644 100644 599984e58dfb71d0d4325c0b9f4627d75ae42a26 599984e58dfb71d0d4325c0b9f4627d75ae42a26 apps/web/src/app/(authenticated)/orgs/page.tsx
+1 .M N... 100644 100644 100644 90fe09529166d22fa40d6a7302a5d9d1d29b8ba9 90fe09529166d22fa40d6a7302a5d9d1d29b8ba9 apps/web/src/app/(authenticated)/runs/[runId]/page.tsx
+1 .M N... 100644 100644 100644 7d2f4d6dc90cba9f300228b9c83e9e324ad75cfa 7d2f4d6dc90cba9f300228b9c83e9e324ad75cfa apps/web/src/app/(authenticated)/traces/page.tsx
+1 .M N... 100644 100644 100644 5ae9a2d14bc016c8a46113aceb3c2b1d5df41452 5ae9a2d14bc016c8a46113aceb3c2b1d5df41452 apps/web/src/app/api/agent/run/route.ts
+1 .M N... 100644 100644 100644 001ffce41d0e0989e02505ff9bc569298d0e341f 001ffce41d0e0989e02505ff9bc569298d0e341f apps/web/src/app/api/org/[orgId]/agents/[agentId]/publish/route.ts
+1 .M N... 100644 100644 100644 97582f29348c797166166dbb376a73a76dcce71c 97582f29348c797166166dbb376a73a76dcce71c apps/web/src/lib/agentExecutionAuth.ts
+1 .M N... 100644 100644 100644 efa265838cd04940fb3b4a4326ee220bcedd3290 efa265838cd04940fb3b4a4326ee220bcedd3290 apps/web/tsconfig.tsbuildinfo
+1 .M N... 100644 100644 100644 fe2a8aba1723374410d8911cbac78327e8e673a3 fe2a8aba1723374410d8911cbac78327e8e673a3 packages/agent-runtime/src/agentRouter.ts
+1 .M N... 100644 100644 100644 6d4f7ac1bf24ceed803df78b832c69327cd5d94b 6d4f7ac1bf24ceed803df78b832c69327cd5d94b packages/agent-runtime/src/queue.ts
+1 .M N... 100644 100644 100644 0a2a836e38e421f677b0471a24d03c5843bc0a03 0a2a836e38e421f677b0471a24d03c5843bc0a03 packages/agent-runtime/src/worker.ts
+1 .M N... 100644 100644 100644 de9f440320b271202cfe022a219b3901af8892aa de9f440320b271202cfe022a219b3901af8892aa packages/sdk/src/agentRuns.ts
+1 .M N... 100644 100644 100644 8f31b81ba6cb30bbf16a9cc72b70112d64ba5479 8f31b81ba6cb30bbf16a9cc72b70112d64ba5479 packages/sdk/src/index.ts
+1 .M N... 100644 100644 100644 f18e9f0bcbfcd0d94c400745d5501f26508b1d2c f18e9f0bcbfcd0d94c400745d5501f26508b1d2c packages/sdk/src/orgs.ts
+1 .M N... 100644 100644 100644 5ad78f7f2ce11e04cc9f9a948348e4888adc6cb1 5ad78f7f2ce11e04cc9f9a948348e4888adc6cb1 packages/sdk/src/types.ts
+1 .M N... 100644 100644 100644 3002a18afa6ff4342ddae823ae31152956d92b2c 3002a18afa6ff4342ddae823ae31152956d92b2c packages/sdk/tsconfig.tsbuildinfo
+1 .M N... 100644 100644 100644 cd242833518bbaba8d4e2160d8ac28485a00bebe cd242833518bbaba8d4e2160d8ac28485a00bebe phase-3-plan.md
+1 .M N... 100644 100644 100644 7e96df024c46d68c4385d09a231e62fbc1e0e834 7e96df024c46d68c4385d09a231e62fbc1e0e834 tests/integration/versioning-replay.spec.ts
+1 .M N... 100644 100644 100644 5038886258bbac452e72a735c2c2bd00000b5283 5038886258bbac452e72a735c2c2bd00000b5283 tests/integration/versioning-runtime.spec.ts
+? AUDIT_USER_FLOWS.md
+? COMPREHENSIVE_AUDIT_FINDINGS.md
+? OBSERVABILITY_AUDIT.md
+? PLATFORM_AUDIT_REPORT.md
+? PRODUCT_READINESS_AUDIT.md
+? SQL_QUERIES_REFERENCE.md
+? apps/web/.pnpm-tsc-output.txt
+? apps/web/src/app/(authenticated)/agents/[id]/versions/
+? apps/web/src/app/(authenticated)/evaluations/
+? apps/web/src/app/(authenticated)/orgs/new/
+? apps/web/src/app/api/evaluations/
+? apps/web/src/components/AgentVersionComparison.tsx
+? apps/web/src/components/EvaluationAnalytics.tsx
+? apps/web/src/components/MarketplacePublishButton.tsx
+? apps/web/src/components/QuickTestWorkflow.tsx
+? apps/web/src/components/RunDetailLive.tsx
+? apps/web/src/components/RunReplayActions.tsx
+? apps/web/src/components/evaluations/
+? apps/web/src/lib/evaluationTrend.ts
+? docs/architecture.md
+? docs/database-schema.md
+? docs/demo-script.md
+? docs/deployment.md
+? docs/local-development.md
+? docs/quota-billing-system.md
+? docs/roadmap.md
+? packages/agent-runtime/src/agentRouter.d.ts
+? packages/agent-runtime/src/agentRouter.d.ts.map
+? packages/agent-runtime/src/agentRouter.js
+? packages/agent-runtime/src/embeddings.d.ts
+? packages/agent-runtime/src/embeddings.d.ts.map
+? packages/agent-runtime/src/embeddings.js
+? packages/agent-runtime/src/index.d.ts
+? packages/agent-runtime/src/index.d.ts.map
+? packages/agent-runtime/src/index.js
+? packages/agent-runtime/src/llm/client.d.ts
+? packages/agent-runtime/src/llm/client.d.ts.map
+? packages/agent-runtime/src/llm/client.js
+? packages/agent-runtime/src/llm/pricing.d.ts
+? packages/agent-runtime/src/llm/pricing.d.ts.map
+? packages/agent-runtime/src/llm/pricing.js
+? packages/agent-runtime/src/llm/providers/mock.d.ts
+? packages/agent-runtime/src/llm/providers/mock.d.ts.map
+? packages/agent-runtime/src/llm/providers/mock.js
+? packages/agent-runtime/src/llm/providers/openai.d.ts
+? packages/agent-runtime/src/llm/providers/openai.d.ts.map
+? packages/agent-runtime/src/llm/providers/openai.js
+? packages/agent-runtime/src/llm/types.d.ts
+? packages/agent-runtime/src/llm/types.d.ts.map
+? packages/agent-runtime/src/llm/types.js
+? packages/agent-runtime/src/memory.d.ts
+? packages/agent-runtime/src/memory.d.ts.map
+? packages/agent-runtime/src/memory.js
+? packages/agent-runtime/src/queue.d.ts
+? packages/agent-runtime/src/queue.d.ts.map
+? packages/agent-runtime/src/queue.js
+? packages/agent-runtime/src/runAgent.d.ts
+? packages/agent-runtime/src/runAgent.d.ts.map
+? packages/agent-runtime/src/runAgent.js
+? packages/agent-runtime/src/tools.d.ts
+? packages/agent-runtime/src/tools.d.ts.map
+? packages/agent-runtime/src/tools.js
+? packages/agent-runtime/src/tracing.d.ts
+? packages/agent-runtime/src/tracing.d.ts.map
+? packages/agent-runtime/src/tracing.js
+? packages/agent-runtime/src/worker.d.ts
+? packages/agent-runtime/src/worker.d.ts.map
+? packages/agent-runtime/src/worker.js
+? packages/sdk/src/evaluations.ts
+? supabase/migrations/000016_organization_usage_events.sql
+? supabase/migrations/000017_reserve_organization_quota.sql
+? supabase/migrations/000018_evaluations.sql
+? tests/integration/evaluations.spec.ts
+? tests/security/quota-api-enforcement.spec.ts
+? tests/security/quota-billing.spec.ts
+? tests/unit/
+? tmp/

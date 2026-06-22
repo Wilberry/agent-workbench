@@ -85,16 +85,11 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
 
   try {
     setProcessing(runId, true);
-    void persistEvent('run_started', {
-      workflow,
-      message,
-      organizationId: null
-    });
 
     // Fetch current run to get existing trace (for recovery)
     const { data: existingRun, error: fetchError } = await supabase
       .from('agent_runs')
-      .select('execution_trace, current_step, status, organization_id')
+      .select('execution_trace, current_step, status, organization_id, agent_version_id')
       .eq('id', runId)
       .single();
 
@@ -104,6 +99,7 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
 
     const existingTrace = (existingRun?.execution_trace as Array<Record<string, unknown>>) || [];
     let currentStep = existingRun?.current_step || 0;
+    const pinnedAgentVersionId = existingRun?.agent_version_id ?? null;
 
     const { data: conversation, error: conversationError } = await supabase
       .from('conversations')
@@ -119,8 +115,38 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
 
     const agent = await agents.get(conversation.agent_id, supabase);
     const agentName = agent?.name ?? 'AI agent';
-    const baseAgentPrompt = agent?.system_prompt ? `Agent prompt:\n${agent.system_prompt}\n\n` : '';
-    const agentModel = (agent?.model as string | undefined) ?? 'gpt-4o-mini';
+    let selectedSystemPrompt = agent?.system_prompt ? `Agent prompt:\n${agent.system_prompt}\n\n` : '';
+    let selectedModel = (agent?.model as string | undefined) ?? 'gpt-4o-mini';
+    let versionWorkflow: string[] | undefined;
+
+    if (pinnedAgentVersionId) {
+      try {
+        const pinnedVersion = await agents.getVersion(pinnedAgentVersionId, supabase);
+        if (pinnedVersion) {
+          if (pinnedVersion.system_prompt) {
+            selectedSystemPrompt = `Agent prompt:\n${pinnedVersion.system_prompt}\n\n`;
+          }
+          if (pinnedVersion.model) {
+            selectedModel = pinnedVersion.model;
+          }
+          if (Array.isArray(pinnedVersion.workflow) && pinnedVersion.workflow.length > 0) {
+            versionWorkflow = pinnedVersion.workflow;
+          }
+        }
+      } catch (err) {
+        console.warn(`Failed to load pinned agent version ${pinnedAgentVersionId}:`, err);
+      }
+    }
+
+    const baseAgentPrompt = selectedSystemPrompt;
+    const agentModel = selectedModel;
+    const effectiveWorkflow = versionWorkflow ?? job.workflow;
+
+    void persistEvent('run_started', {
+      workflow: effectiveWorkflow,
+      message,
+      organizationId: organizationId
+    });
 
     // Update status to running
     await supabase.from('agent_runs').update({ status: 'running' }).eq('id', runId);
@@ -138,8 +164,8 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
     let lastModelName: string | undefined;
 
     // Resume from current_step in case of restart
-    for (let stepIndex = currentStep; stepIndex < workflow.length; stepIndex += 1) {
-      const role = workflow[stepIndex]!;
+    for (let stepIndex = currentStep; stepIndex < effectiveWorkflow.length; stepIndex += 1) {
+      const role = effectiveWorkflow[stepIndex]!;
       const toolsCalled: string[] = [];
       let modelIterations = 0;
       let stepFailed = false;
@@ -361,7 +387,7 @@ ${JSON.stringify(toolResult, null, 2)}`
 
     // Mark complete
     void persistEvent('run_completed', {
-      total_steps: workflow.length,
+      total_steps: effectiveWorkflow.length,
       total_tokens: totalTokens,
       estimated_cost: totalEstimatedCost,
       latency_ms: totalLatencyMs,
