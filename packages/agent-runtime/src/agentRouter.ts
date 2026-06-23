@@ -13,6 +13,7 @@ export type ExecutionTrace = {
   total_tokens?: number;
   estimated_cost?: number;
   latency_ms?: number;
+  steps?: Array<{ name: string; latency?: number; input?: unknown; output?: unknown }>;
 };
 
 type MemorySnippet = {
@@ -103,6 +104,7 @@ export async function runMultiAgentWorkflow(
   let totalLatencyMs = 0;
   let lastModelName: string | undefined;
   const episode: string[] = [];
+  const steps: Array<{ name: string; latency?: number; input?: unknown; output?: unknown }> = [];
 
   for (const role of agentRoles) {
     const systemContent = `You are ${role}. ${roleDescription(role)} Use available memory and tools when appropriate.`;
@@ -138,7 +140,12 @@ Respond with your assigned role output.`
     const toolCall = parseToolCall(finalOutput);
     if (toolCall) {
       toolsCalled.push(toolCall.name);
+      const toolStart = Date.now();
       const toolResult = await runTool(toolCall.name, toolCall.args, runId);
+      const toolLatency = Date.now() - toolStart;
+      // record a step for the tool invocation
+      steps.push({ name: `tool:${toolCall.name}`, latency: toolLatency, input: toolCall.args, output: toolResult });
+
       const toolPrompt = [
         ...rolePrompt,
         {
@@ -163,8 +170,12 @@ ${JSON.stringify(toolResult, null, 2)}`
       lastModelName = toolResponse.model_name;
     }
 
+    // push a step representing this role's output (use reported latency if available)
+    const roleLatency = (agentResponse?.latency_ms as number | undefined) ?? undefined;
+    steps.push({ name: `${role}`, latency: roleLatency, input: undefined, output: finalOutput });
+
     episode.push(`${role.toUpperCase()} OUTPUT:
-${finalOutput}`);
+  ${finalOutput}`);
   }
 
   return {
@@ -179,7 +190,8 @@ ${finalOutput}`);
       completion_tokens: totalCompletionTokens,
       total_tokens: totalTokens,
       estimated_cost: totalEstimatedCost,
-      latency_ms: totalLatencyMs
+      latency_ms: totalLatencyMs,
+      steps
     }
   };
 }

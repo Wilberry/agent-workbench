@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { cookies, headers } from 'next/headers';
 import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-nextjs';
+import { agents } from '@agent-workbench/sdk';
 import type { Database } from '@/types/database';
 
 export default async function AgentsPage({ searchParams }: { searchParams: { success?: string } }) {
@@ -9,13 +10,7 @@ export default async function AgentsPage({ searchParams }: { searchParams: { suc
     data: { user }
   } = await supabase.auth.getUser();
 
-  const { data: agents } = await supabase
-    .from('agents')
-    .select('id, name, description, created_at')
-    .eq('user_id', user?.id ?? '')
-    .order('created_at', { ascending: false });
-
-  const typedAgents = (agents ?? []) as Array<{ id: string; name: string; description: string | null; created_at: string }>;
+  const typedAgents = await agents.list(user?.id ?? '', supabase);
 
   const successMessage = searchParams.success ? 'Agent created successfully!' : null;
 

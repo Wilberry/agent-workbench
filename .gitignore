@@ -41,3 +41,10 @@ Thumbs.db
 # Temporary debug and migration artifacts
 mp-*.js
 tmp-*.sql
+# Investigation / audit artifacts
+audit-output*.txt
+release_audit_output*.txt
+schema_*.json
+migration_*.sql
+EXPERIMENTATION_SUITE_*.md
+*.ndjson

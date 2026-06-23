@@ -63,6 +63,24 @@ class MockSupabase {
       const net_reserved = total_reserved - total_refunded;
       return { data: [{ total_reserved, total_refunded, net_reserved, total_cost: rows.filter((r:any)=>r.organization_id===org).reduce((s:number,x:any)=>s+(x.estimated_cost||0),0) }] };
     }
+    if (name === 'reserve_organization_quota') {
+      const org = params.organization_id ?? params.org_id ?? params.p_organization_id;
+      const runId = params.run_id ?? params.p_run_id;
+      const estimated_cost = params.estimated_cost ?? params.p_estimated_cost ?? 0;
+      if (!this.tables['organization_usage_events']) this.tables['organization_usage_events'] = new Table();
+      const row = {
+        id: String(Math.random()).slice(2),
+        organization_id: org,
+        run_id: runId,
+        event_type: 'quota_reserved',
+        tokens: 0,
+        estimated_cost,
+        metadata: { timestamp: new Date().toISOString() },
+        created_at: new Date().toISOString()
+      };
+      this.tables['organization_usage_events'].rows.push(row);
+      return { data: [row] };
+    }
     if (name === 'get_organization_billing_metrics') {
       const org = params.org_id;
       const rows = this.tables['organization_usage_events']?.rows ?? [];

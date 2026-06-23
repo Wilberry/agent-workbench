@@ -3,7 +3,8 @@ import Link from 'next/link';
 import type { Database } from '@/types/database';
 import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-nextjs';
 import EvaluationStatusBadge from '@/components/evaluations/EvaluationStatusBadge';
-import type { EvaluationRun, EvaluationDataset } from '@agent-workbench/sdk';
+import { evaluations, agents } from '@agent-workbench/sdk';
+import type { EvaluationRun } from '@agent-workbench/sdk';
 
 export default async function EvaluationsRunsPage() {
   const supabase = createServerComponentSupabaseClient<Database>({ headers, cookies });
@@ -15,22 +16,22 @@ export default async function EvaluationsRunsPage() {
     return <div className="p-6 text-red-400">Not authenticated.</div>;
   }
 
-  const [runsRes, datasetsRes, versionsRes] = await Promise.all([
-    supabase.from('evaluation_runs').select('*').order('created_at', { ascending: false }),
-    supabase.from('evaluation_datasets').select('id,name'),
-    supabase.from('agent_versions').select('id,version')
+  const [runs, datasets, versions] = await Promise.all([
+    evaluations.listEvaluationRuns(undefined, supabase),
+    evaluations.listDatasets(undefined, undefined, supabase),
+    agents.listAllVersions(supabase)
   ]);
 
-  const runs = (runsRes.data ?? []) as EvaluationRun[];
-  const datasets = (datasetsRes.data ?? []) as Array<{ id: string; name: string }>;
-  const versions = (versionsRes.data ?? []) as Array<{ id: string; version: string }>;
+  const runsList = runs as EvaluationRun[];
+  const datasetsList = datasets as Array<{ id: string; name: string }>;
+  const versionsList = versions as Array<{ id: string; version: string }>;
 
-  const datasetMap = datasets.reduce<Record<string, string>>((acc, dataset) => {
+  const datasetMap = datasetsList.reduce<Record<string, string>>((acc, dataset) => {
     acc[dataset.id] = dataset.name;
     return acc;
   }, {});
 
-  const versionMap = versions.reduce<Record<string, string>>((acc, version) => {
+  const versionMap = versionsList.reduce<Record<string, string>>((acc, version) => {
     acc[version.id] = version.version;
     return acc;
   }, {});

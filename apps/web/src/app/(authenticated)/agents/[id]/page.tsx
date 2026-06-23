@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { cookies, headers } from 'next/headers';
 import type { Database } from '@/types/database';
 import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-nextjs';
-import { db } from '@/lib/db';
+import { agents, conversations, marketplace } from '@agent-workbench/sdk';
 import AgentChat from '@/components/AgentChat';
 import AgentVersionHistory from '@/components/AgentVersionHistory';
 import AgentVersionComparison from '@/components/AgentVersionComparison';
@@ -21,51 +21,28 @@ export default async function AgentPage({ params }: Props) {
     data: { user }
   } = await supabase.auth.getUser();
 
-  const agent = await db.agents.get(params.id);
+  const agent = await agents.get(params.id, supabase);
 
   if (!agent) {
     return <div className="p-6 text-red-400">Agent not found.</div>;
   }
 
   // Fetch agent versions
-  const versions = await db.agents.listVersions(agent.id);
+  const versions = await agents.listVersions(agent.id, supabase);
 
   // Get current version
-  const currentVersion = await db.agents.getLatestVersion(agent.id);
+  const currentVersion = await agents.getLatestVersion(agent.id, supabase);
 
   let currentVisibility: 'public' | 'private' = 'private';
   if (agent.organization_id) {
-    const { data: marketplaceItem } = await supabase
-      .from('marketplace_agents')
-      .select('visibility')
-      .eq('id', agent.id)
-      .eq('org_id', agent.organization_id)
-      .maybeSingle();
-    currentVisibility = (marketplaceItem?.visibility as 'public' | 'private') ?? 'private';
+    currentVisibility = await marketplace.getAgentVisibility(agent.id, agent.organization_id, supabase);
   }
 
-  const { data: conversation } = await supabase
-    .from('conversations')
-    .select('id')
-    .eq('agent_id', agent.id)
-    .eq('user_id', user?.id ?? '')
-    .limit(1)
-    .single();
-
-  let conversationId = conversation?.id;
+  const conversation = await conversations.getOrCreate(agent.id, user?.id ?? '', `${agent.name} chat`, supabase);
+  const conversationId = conversation?.id;
 
   if (!conversationId) {
-    const { data: createdConversation, error: conversationError } = await supabase
-      .from('conversations')
-      .insert([{ agent_id: agent.id, user_id: user?.id, title: `${agent.name} chat` }])
-      .select('id')
-      .single();
-
-    if (conversationError || !createdConversation) {
-      return <div className="p-6 text-red-400">Unable to create conversation.</div>;
-    }
-
-    conversationId = (createdConversation as { id: string }).id;
+    return <div className="p-6 text-red-400">Unable to create conversation.</div>;
   }
 
   return (

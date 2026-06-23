@@ -28,6 +28,53 @@ export const conversations = {
     return data ?? [];
   },
 
+  async listByUser(userId: string, client?: SupabaseClient<Database>) {
+    const supabase = client ?? createServerSupabaseClient();
+    const { data, error } = await supabase
+      .from('conversations')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data ?? [];
+  },
+
+  async get(conversationId: string, client?: SupabaseClient<Database>) {
+    const supabase = client ?? createServerSupabaseClient();
+    const { data, error } = await supabase
+      .from('conversations')
+      .select('*')
+      .eq('id', conversationId)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async getOrCreate(agentId: string, userId: string, title?: string, client?: SupabaseClient<Database>) {
+    const supabase = client ?? createServerSupabaseClient();
+    const { data: existing, error: existingError } = await supabase
+      .from('conversations')
+      .select('*')
+      .eq('agent_id', agentId)
+      .eq('user_id', userId)
+      .limit(1)
+      .maybeSingle();
+
+    if (existingError) throw existingError;
+    if (existing) return existing;
+
+    const { data, error } = await supabase
+      .from('conversations')
+      .insert([{ agent_id: agentId, user_id: userId, title: title ?? null }])
+      .select('*')
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
   async listMessages(conversationId: string, client?: SupabaseClient<Database>) {
     const supabase = client ?? createServerSupabaseClient();
     const { data, error } = await supabase

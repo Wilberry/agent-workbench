@@ -14,6 +14,7 @@ export const agents = {
   async create(
     userId: string,
     payload: { name: string; description?: string; system_prompt: string; model?: string },
+    organizationId?: string | null,
     client?: SupabaseClient<Database>
   ) {
     const supabase = client ?? createServerSupabaseClient();
@@ -22,12 +23,14 @@ export const agents = {
       .insert([
         {
           user_id: userId,
+          organization_id: organizationId ?? null,
           name: payload.name,
           description: payload.description ?? null,
           system_prompt: payload.system_prompt,
           model: payload.model ?? 'gpt-4o-mini'
         }
       ])
+      .select('*')
       .single();
 
     if (error) throw error;
@@ -40,6 +43,17 @@ export const agents = {
       .from('agents')
       .select('*')
       .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data ?? [];
+  },
+
+  async listAll(client?: SupabaseClient<Database>) {
+    const supabase = client ?? createServerSupabaseClient();
+    const { data, error } = await supabase
+      .from('agents')
+      .select('*')
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -152,6 +166,52 @@ export const agents = {
 
     if (error) throw error;
     return (data ?? []).map((version) => normalizeAgentVersionRow(version));
+  },
+
+  async listAllVersions(client?: SupabaseClient<Database>) {
+    const supabase = client ?? createServerSupabaseClient();
+    const { data, error } = await supabase.from('agent_versions').select('*').order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data ?? []).map((version) => normalizeAgentVersionRow(version));
+  },
+
+  async getByOwner(agentId: string, userId: string, client?: SupabaseClient<Database>) {
+    const supabase = client ?? createServerSupabaseClient();
+    const { data, error } = await supabase
+      .from('agents')
+      .select('*')
+      .eq('id', agentId)
+      .eq('user_id', userId)
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async updateByOwner(
+    agentId: string,
+    userId: string,
+    updates: { name?: string; description?: string | null; system_prompt?: string; model?: string },
+    client?: SupabaseClient<Database>
+  ) {
+    const supabase = client ?? createServerSupabaseClient();
+    const { data, error } = await supabase
+      .from('agents')
+      .update(updates)
+      .eq('id', agentId)
+      .eq('user_id', userId)
+      .select('*')
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async deleteByOwner(agentId: string, userId: string, client?: SupabaseClient<Database>) {
+    const supabase = client ?? createServerSupabaseClient();
+    const { error } = await supabase.from('agents').delete().eq('id', agentId).eq('user_id', userId);
+    if (error) throw error;
+    return true;
   },
 
   async getVersion(versionId: string, client?: SupabaseClient<Database>) {

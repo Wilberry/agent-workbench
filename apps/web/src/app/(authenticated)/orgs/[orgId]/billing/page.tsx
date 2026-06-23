@@ -1,18 +1,14 @@
 import { cookies, headers } from 'next/headers';
 import type { Database } from '@/types/database';
 import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-nextjs';
-import { agentRuns } from '@agent-workbench/sdk';
+import { agentRuns, orgs } from '@agent-workbench/sdk';
 
 export default async function OrgBillingPage({ params }: { params: { orgId: string } }) {
   const supabase = createServerComponentSupabaseClient<Database>({ headers, cookies });
-  const { data: billing, error } = await supabase
-    .from('org_billing')
-    .select('*')
-    .eq('org_id', params.orgId)
-    .single();
-  const telemetry = await agentRuns.orgTelemetry(params.orgId);
+  const billing = await orgs.getBilling(params.orgId, supabase);
+  const telemetry = await agentRuns.orgTelemetry(params.orgId, supabase);
 
-  if (error) {
+  if (!billing || !telemetry) {
     return <div className="rounded-3xl border border-slate-700 bg-slate-900 p-6 text-red-400">Unable to load billing details.</div>;
   }
 

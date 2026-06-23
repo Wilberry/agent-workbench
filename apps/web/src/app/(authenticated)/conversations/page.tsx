@@ -2,13 +2,9 @@ import Link from 'next/link';
 import { cookies, headers } from 'next/headers';
 import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-nextjs';
 import type { Database } from '@/types/database';
+import { conversations as conversationSdk } from '@agent-workbench/sdk';
 
-type ConversationWithAgent = Database['public']['Tables']['conversations']['Row'] & {
-  agent?: {
-    id: string;
-    name: string;
-  }[];
-};
+type ConversationWithAgent = Database['public']['Tables']['conversations']['Row'];
 
 export default async function ConversationsPage() {
   const supabase = createServerComponentSupabaseClient<Database>({ headers, cookies });
@@ -16,20 +12,13 @@ export default async function ConversationsPage() {
     data: { user }
   } = await supabase.auth.getUser();
 
-  const { data: conversations, error } = await supabase
-    .from('conversations')
-    .select('id, title, agent_id, created_at, agents(id, name)')
-    .eq('user_id', user?.id ?? '')
-    .order('created_at', { ascending: false });
+  const typedConversations = await conversationSdk.listByUser(user?.id ?? '', supabase);
 
-  const typedConversations = (conversations ?? []) as ConversationWithAgent[];
-
-  if (error) {
+  if (!typedConversations) {
     return (
       <main className="min-h-screen bg-slate-950 text-white p-6">
         <div className="mx-auto max-w-5xl rounded-3xl border border-red-700 bg-slate-900 p-6 text-red-300">
           <p>Could not load conversations.</p>
-          <pre className="whitespace-pre-wrap text-sm text-red-200">{error.message}</pre>
         </div>
       </main>
     );
@@ -55,7 +44,7 @@ export default async function ConversationsPage() {
 
         <div className="space-y-4">
           {typedConversations.map((conversation) => {
-            const agentName = conversation.agent?.[0]?.name ?? conversation.agent_id;
+            const agentName = conversation.agent_id;
             return (
               <Link
                 key={conversation.id}

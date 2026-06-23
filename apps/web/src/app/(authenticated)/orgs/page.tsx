@@ -1,6 +1,7 @@
 import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-nextjs';
 import { cookies, headers } from 'next/headers';
 import Link from 'next/link';
+import { orgs } from '@agent-workbench/sdk';
 import type { Database } from '@/types/database';
 
 export default async function OrgsPage() {
@@ -11,16 +12,7 @@ export default async function OrgsPage() {
     return <div className="p-6 text-red-400">Not authenticated.</div>;
   }
 
-  const { data: memberships, error } = await supabase
-    .from('organization_memberships')
-    .select('org_id, organizations(id, name, description)')
-    .eq('user_id', user.id);
-
-  const organizations = (memberships ?? []).map((membership: any) => membership.organizations);
-
-  if (error) {
-    return <div className="p-6 text-red-400">Failed to load organizations.</div>;
-  }
+  const organizations = await orgs.listOrgsForUser(user.id, supabase);
 
   return (
     <main className="min-h-screen bg-slate-950 text-white p-6">

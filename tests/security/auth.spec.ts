@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createClient } from '@supabase/supabase-js';
 import { createServerSupabaseClient } from '@agent-workbench/sdk';
+import { createTestAuthUser } from '../utils/createTestAuthUser';
 import { randomUUID } from 'crypto';
 
 const serviceClient = createServerSupabaseClient();
@@ -16,22 +17,56 @@ describe('Security validation - authentication and authorization', () => {
       .from('agent_runs')
       .select('*')
       .eq('id', fakeId)
-      .single();
+      .maybeSingle();
 
     expect(error).toBeNull();
     expect(data).toBeNull();
   });
 
   it('allows service-role access but denies anonymous cross-org records', async () => {
-    const userId = randomUUID();
+    const userId = await createTestAuthUser();
+    const { data: agent, error: agentError } = await serviceClient
+      .from('agents')
+      .insert([
+        {
+          user_id: userId,
+          name: 'Auth Test Agent',
+          description: 'Auth test conversation agent',
+          system_prompt: 'Auth test prompt',
+          model: 'gpt-4o-mini'
+        }
+      ])
+      .select('*')
+      .single();
+
+    expect(agentError).toBeNull();
+    expect(agent?.id).toBeDefined();
+
+    const { data: conversation, error: conversationError } = await serviceClient
+      .from('conversations')
+      .insert([
+        {
+          agent_id: agent!.id,
+          user_id: userId,
+          title: 'Auth test conversation'
+        }
+      ])
+      .select('*')
+      .single();
+
+    expect(conversationError).toBeNull();
+    expect(conversation?.id).toBeDefined();
+
     const { data: run, error: runError } = await serviceClient
       .from('agent_runs')
-      .insert([{
-        user_id: userId,
-        conversation_id: randomUUID(),
-        workflow: ['Planner', 'Executor', 'Reviewer'],
-        status: 'pending'
-      }])
+      .insert([
+        {
+          user_id: userId,
+          conversation_id: conversation!.id,
+          workflow: ['Planner', 'Executor', 'Reviewer'],
+          status: 'pending'
+        }
+      ])
       .select('id')
       .single();
 
@@ -42,7 +77,7 @@ describe('Security validation - authentication and authorization', () => {
       .from('agent_runs')
       .select('*')
       .eq('id', run?.id)
-      .single();
+      .maybeSingle();
 
     expect(anonymousError).toBeNull();
     expect(anonymousResult).toBeNull();

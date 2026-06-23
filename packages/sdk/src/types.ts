@@ -51,11 +51,13 @@ export type Organization = {
   updated_at: string;
 };
 
+export type OrgMembershipRole = 'owner' | 'admin' | 'member' | 'viewer';
+
 export type OrganizationMembership = {
   id: string;
   org_id: string;
   user_id: string;
-  role: 'owner' | 'admin' | 'member';
+  role: OrgMembershipRole;
   created_at: string;
 };
 
@@ -102,6 +104,22 @@ export type EvaluationRunResult = {
   agent_output: Record<string, unknown>;
   exact_match: boolean;
   details: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Experiment = {
+  id: string;
+  name: string;
+  agent_id: string;
+  version_a_id: string;
+  version_b_id: string;
+  dataset_id: string;
+  created_by: string;
+  organization_id?: string | null;
+  run_a_id?: string | null;
+  run_b_id?: string | null;
+  status: 'draft' | 'running' | 'completed' | 'failed';
   created_at: string;
   updated_at: string;
 };
@@ -228,7 +246,7 @@ export type Database = {
         id: string;
         org_id: string;
         user_id: string;
-        role: 'owner' | 'admin' | 'member';
+        role: 'owner' | 'admin' | 'member' | 'viewer';
         created_at: string;
       }>;
       marketplace_agents: SupabaseTable<{
@@ -250,6 +268,13 @@ export type Database = {
         last_billed: string | null;
         created_at: string;
         updated_at: string;
+      }>;
+      marketplace_installs: SupabaseTable<{
+        id: string;
+        org_id: string;
+        source_version_id: string;
+        installed_agent_id: string;
+        created_at: string;
       }>;
       agent_runs: SupabaseTable<{
         id: string;
@@ -387,6 +412,21 @@ export type Database = {
         agent_output: Record<string, unknown>;
         exact_match: boolean;
         details: Record<string, unknown>;
+        created_at: string;
+        updated_at: string;
+      }>;
+      experiments: SupabaseTable<{
+        id: string;
+        name: string;
+        agent_id: string;
+        version_a_id: string;
+        version_b_id: string;
+        dataset_id: string;
+        created_by: string;
+        organization_id?: string | null;
+        run_a_id?: string | null;
+        run_b_id?: string | null;
+        status: 'draft' | 'running' | 'completed' | 'failed';
         created_at: string;
         updated_at: string;
       }>;

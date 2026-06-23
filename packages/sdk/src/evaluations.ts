@@ -117,20 +117,82 @@ export const evaluations = {
   },
 
   async listDatasets(
-    userId: string,
+    userId?: string,
     options?: { organizationId?: string | null },
     client?: SupabaseClient<Database>
   ) {
     const supabase = client ?? createServerSupabaseClient();
-    const query = supabase
-      .from('evaluation_datasets')
-      .select('*')
-      .or(`user_id.eq.${userId}${options?.organizationId ? `,organization_id.eq.${options.organizationId}` : ''}`)
-      .order('created_at', { ascending: false });
+    let query = supabase.from('evaluation_datasets').select('*').order('created_at', { ascending: false });
+
+    if (userId) {
+      query = query.or(`user_id.eq.${userId}${options?.organizationId ? `,organization_id.eq.${options.organizationId}` : ''}`);
+    } else if (options?.organizationId) {
+      query = query.eq('organization_id', options.organizationId);
+    }
 
     const { data, error } = await query;
     if (error) throw error;
     return (data ?? []) as EvaluationDataset[];
+  },
+
+  async listDatasetExamples(datasetId: string, client?: SupabaseClient<Database>) {
+    const supabase = client ?? createServerSupabaseClient();
+    const { data, error } = await supabase
+      .from('evaluation_dataset_examples')
+      .select('*')
+      .eq('dataset_id', datasetId)
+      .order('example_index', { ascending: true });
+
+    if (error) throw error;
+    return (data ?? []) as EvaluationDatasetExample[];
+  },
+
+  async getDatasetExamplesByIds(exampleIds: string[], client?: SupabaseClient<Database>) {
+    const supabase = client ?? createServerSupabaseClient();
+    const { data, error } = await supabase
+      .from('evaluation_dataset_examples')
+      .select('*')
+      .in('id', exampleIds);
+
+    if (error) throw error;
+    return (data ?? []) as EvaluationDatasetExample[];
+  },
+
+  async listDatasetExampleCounts(client?: SupabaseClient<Database>) {
+    const supabase = client ?? createServerSupabaseClient();
+    const { data, error } = await supabase.from('evaluation_dataset_examples').select('dataset_id');
+
+    if (error) throw error;
+
+    return (data ?? []).reduce<Record<string, number>>((acc, row) => {
+      if (!row?.dataset_id) {
+        return acc;
+      }
+      acc[row.dataset_id] = (acc[row.dataset_id] ?? 0) + 1;
+      return acc;
+    }, {});
+  },
+
+  async listEvaluationRuns(
+    options?: {
+      datasetId?: string;
+      agentVersionId?: string;
+      userId?: string;
+      limit?: number;
+    },
+    client?: SupabaseClient<Database>
+  ) {
+    const supabase = client ?? createServerSupabaseClient();
+    let query = supabase.from('evaluation_runs').select('*').order('created_at', { ascending: false });
+
+    if (options?.datasetId) query = query.eq('dataset_id', options.datasetId);
+    if (options?.agentVersionId) query = query.eq('agent_version_id', options.agentVersionId);
+    if (options?.userId) query = query.eq('user_id', options.userId);
+    if (options?.limit) query = query.limit(options.limit);
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data ?? []) as EvaluationRun[];
   },
 
   async createEvaluationRun(
@@ -183,6 +245,11 @@ export const evaluations = {
     const runId = run.id as string;
 
     const resultRows: EvaluationRunResult[] = [];
+    let totalLatencyMs = 0;
+    let totalTokens = 0;
+    let totalEstimatedCost = 0;
+    const toolsUsed: string[] = [];
+    const agentsUsed: string[] = [];
 
     for (const example of exampleRows) {
       const agentResponse = await runAgentForEvaluation(
@@ -196,6 +263,18 @@ export const evaluations = {
       const normalizedExpected = normalizeTextValue((example.expected_output as any)?.text ?? example.expected_output);
       const exactMatch = normalizedAgentOutput === normalizedExpected;
 
+      const trace = (agentResponse as any)?.trace ?? {};
+      totalLatencyMs += Number(trace.latency_ms ?? 0);
+      totalTokens += Number(trace.total_tokens ?? 0);
+      totalEstimatedCost += Number(trace.estimated_cost ?? 0);
+
+      if (Array.isArray(trace.toolsCalled)) {
+        toolsUsed.push(...trace.toolsCalled.filter((name: unknown) => typeof name === 'string'));
+      }
+      if (Array.isArray(trace.agentsUsed)) {
+        agentsUsed.push(...trace.agentsUsed.filter((name: unknown) => typeof name === 'string'));
+      }
+
       const resultPayload = {
         evaluation_run_id: runId,
         example_id: example.id,
@@ -204,7 +283,8 @@ export const evaluations = {
         details: {
           normalized_output: normalizedAgentOutput,
           passed: exactMatch,
-          score: exactMatch ? 1 : 0
+          score: exactMatch ? 1 : 0,
+          trace: trace
         }
       };
 
@@ -218,7 +298,18 @@ export const evaluations = {
       resultRows.push(result as EvaluationRunResult);
     }
 
-    const summary = normalizeEvaluationRunSummary(resultRows);
+    const normalizedSummary = normalizeEvaluationRunSummary(resultRows);
+    const summary = {
+      ...normalizedSummary,
+      average_latency_ms: resultRows.length ? totalLatencyMs / resultRows.length : 0,
+      average_tokens: resultRows.length ? totalTokens / resultRows.length : 0,
+      estimated_cost: totalEstimatedCost,
+      trace: {
+        toolsCalled: Array.from(new Set(toolsUsed)),
+        agentsUsed: Array.from(new Set(agentsUsed))
+      }
+    };
+
     const { error: updateError } = await supabase
       .from('evaluation_runs')
       .update({ status: 'completed', summary })
@@ -249,6 +340,19 @@ export const evaluations = {
       .eq('evaluation_run_id', runId)
       .order('created_at', { ascending: true });
 
+    if (error) throw error;
+    return (data ?? []) as EvaluationRunResult[];
+  },
+
+  async listEvaluationResults(options?: { runIds?: string[] }, client?: SupabaseClient<Database>) {
+    const supabase = client ?? createServerSupabaseClient();
+    let query = supabase.from('evaluation_run_results').select('*').order('created_at', { ascending: true });
+
+    if (options?.runIds && options.runIds.length > 0) {
+      query = query.in('evaluation_run_id', options.runIds);
+    }
+
+    const { data, error } = await query;
     if (error) throw error;
     return (data ?? []) as EvaluationRunResult[];
   }
@@ -307,7 +411,7 @@ async function runAgentForEvaluation(
   const runMultiAgentWorkflow = runtimeModule.runMultiAgentWorkflow as (
     input: any,
     model?: string
-  ) => Promise<{ message: string }>;
+  ) => Promise<{ message: string; trace?: any }>;
 
   const result = await runMultiAgentWorkflow(
     {
@@ -320,5 +424,5 @@ async function runAgentForEvaluation(
     agentVersion.model
   );
 
-  return { text: result.message };
+  return { text: result.message, trace: (result as any).trace ?? {} };
 }
