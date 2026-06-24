@@ -52,12 +52,24 @@ async function createAuthenticatedClient(accessToken: string, refreshToken: stri
 }
 
 async function setupTestOrgs(): Promise<TestContext> {
+  console.log('setupTestOrgs: creating sourceOwner');
   const sourceOwner = await createAuthenticatedTestUser();
+  console.log('setupTestOrgs: created sourceOwner', sourceOwner.userId);
+
+  console.log('setupTestOrgs: creating targetOwner');
   const targetOwner = await createAuthenticatedTestUser();
+  console.log('setupTestOrgs: created targetOwner', targetOwner.userId);
+
+  console.log('setupTestOrgs: creating targetMember');
   const targetMember = await createAuthenticatedTestUser();
+  console.log('setupTestOrgs: created targetMember', targetMember.userId);
+
+  console.log('setupTestOrgs: creating targetViewer');
   const targetViewer = await createAuthenticatedTestUser();
+  console.log('setupTestOrgs: created targetViewer', targetViewer.userId);
 
   // Create source org with marketplace agent
+  console.log('setupTestOrgs: creating sourceOrg');
   const sourceOrg = await orgs.createOrg(sourceOwner.userId, {
     name: `Source Org ${Date.now()}`,
     slug: `source-org-${Date.now()}`,
@@ -65,12 +77,17 @@ async function setupTestOrgs(): Promise<TestContext> {
   }, serviceClient);
 
   // Create marketplace agent in source org
-  const sourceAgent = await agents.create(sourceOwner.userId, {
-    name: 'Marketplace Test Agent',
-    description: 'Test agent for marketplace',
-    system_prompt: 'You are a helpful test agent',
-    model: 'gpt-4o-mini'
-  }, serviceClient);
+  const sourceAgent = await agents.create(
+    sourceOwner.userId,
+    {
+      name: 'Marketplace Test Agent',
+      description: 'Test agent for marketplace',
+      system_prompt: 'You are a helpful test agent',
+      model: 'gpt-4o-mini'
+    },
+    sourceOrg.id,
+    serviceClient
+  );
 
   // Create initial version
   const sourceVersion = await agents.createVersion(
@@ -81,7 +98,7 @@ async function setupTestOrgs(): Promise<TestContext> {
       description: 'Initial marketplace version',
       system_prompt: 'You are a helpful test agent',
       model: 'gpt-4o-mini',
-      workflow: {},
+      workflow: [],
       tools: [],
       metadata: { public: 'true' }
     },

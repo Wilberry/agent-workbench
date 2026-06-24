@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 type Props = { params: { versionId: string } };
 
 export default async function MarketAgentDetail({ params }: Props) {
-  const version = await marketplace.getAgentVersion(params.versionId);
+  const version = await marketplace.getMarketplaceAgentVersion(params.versionId);
   if (!version) return <div className="p-6 text-red-400">Agent version not found</div>;
 
   return (

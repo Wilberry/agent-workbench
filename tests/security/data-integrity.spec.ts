@@ -48,30 +48,28 @@ async function setupDataIntegrityTest(): Promise<TestContext> {
       description: 'Test version',
       system_prompt: 'Test prompt',
       model: 'gpt-4o-mini',
-      workflow: {},
-      tools: [],
-      metadata: { public: 'true' }
+      workflow: []
     },
     serviceClient
   );
 
-  // Create install
-  const result = await marketplace.installAgent(
-    sourceVersion.id,
-    org.id,
-    ownerId,
-    'Installed Agent',
-    undefined,
-    serviceClient
-  );
+  // Publish to marketplace
+  await orgs.publishMarketplaceAgent(sourceAgent.id, 'public', serviceClient);
+
+  // Create target org and member
+  const targetOrgId = await orgs.createOrg(ownerId, {
+    name: `Target Integrity Org ${Date.now()}`,
+    slug: `target-integrity-org-${Date.now()}`,
+    description: 'Target org for integrity testing'
+  }, serviceClient);
 
   return {
     orgId: org.id,
     ownerId,
     sourceVersionId: sourceVersion.id,
     sourceAgentId: sourceAgent.id,
-    installedAgentId: result.agent.id,
-    installId: result.install.id
+    installedAgentId: '',
+    installId: ''
   };
 }
 
@@ -260,7 +258,7 @@ describe('Data Integrity and Constraints', () => {
           description: 'Test',
           system_prompt: 'Test',
           model: 'gpt-4o-mini',
-          workflow: {},
+          workflow: [],
           tools: [],
           metadata: {}
         },

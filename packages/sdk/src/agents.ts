@@ -18,18 +18,19 @@ export const agents = {
     client?: SupabaseClient<Database>
   ) {
     const supabase = client ?? createServerSupabaseClient();
+    const insertPayload = [
+      {
+        user_id: userId,
+        organization_id: organizationId ?? null,
+        name: payload.name,
+        description: payload.description ?? null,
+        system_prompt: payload.system_prompt,
+        model: payload.model ?? 'gpt-4o-mini'
+      }
+    ];
     const { data, error } = await supabase
       .from('agents')
-      .insert([
-        {
-          user_id: userId,
-          organization_id: organizationId ?? null,
-          name: payload.name,
-          description: payload.description ?? null,
-          system_prompt: payload.system_prompt,
-          model: payload.model ?? 'gpt-4o-mini'
-        }
-      ])
+      .insert(insertPayload)
       .select('*')
       .single();
 

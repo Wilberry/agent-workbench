@@ -34,6 +34,7 @@ async function createAgent(formData: FormData) {
       system_prompt,
       model
     },
+    null,
     supabase
   );
 

@@ -43,7 +43,9 @@ export const orgs = {
         .select('*')
         .single();
 
-      if (error) return { data: null as Organization | null, error };
+      if (error) {
+        return { data: null as Organization | null, error };
+      }
       return { data: data as Organization, error: null };
     };
 
@@ -84,8 +86,13 @@ export const orgs = {
 
     if (insertError || !createdOrg) throw insertError ?? new Error('Failed to create organization');
 
-    await supabase.from('organization_memberships').insert([{ org_id: createdOrg.id, user_id: userId, role: 'owner' }]);
-    await supabase.from('org_billing').insert([{ org_id: createdOrg.id, plan: 'free', tokens_used: 0, runs_used: 0 }]);
+    const membershipPayload = [{ org_id: createdOrg.id, user_id: userId, role: 'owner' }];
+    const { error: membershipError } = await supabase.from('organization_memberships').insert(membershipPayload);
+    if (membershipError) throw membershipError;
+
+    const billingPayload = [{ org_id: createdOrg.id, plan: 'free', tokens_used: 0, runs_used: 0 }];
+    const { error: billingError } = await supabase.from('org_billing').insert(billingPayload);
+    if (billingError) throw billingError;
     return createdOrg;
   },
 
@@ -214,12 +221,66 @@ export const orgs = {
 
   async publishMarketplaceAgent(agentId: string, visibility: 'public' | 'private', client?: SupabaseClient<Database>) {
     const supabase = client ?? createServerSupabaseClient();
+
+    const { data: existingMarketplaceAgent, error: existingError } = await supabase
+      .from('marketplace_agents')
+      .select('*')
+      .eq('id', agentId)
+      .maybeSingle();
+    if (existingError) throw existingError;
+
+    const { data: latestVersion, error: latestVersionError } = await supabase
+      .from('agent_versions')
+      .select('id')
+      .eq('agent_id', agentId)
+      .order('version_number', { ascending: false })
+      .limit(1)
+      .single();
+    if (latestVersionError && latestVersionError.code !== 'PGRST116') throw latestVersionError;
+    const latest_version_id = latestVersion?.id ?? null;
+
+    if (existingMarketplaceAgent) {
+      const { data, error } = await supabase
+        .from('marketplace_agents')
+        .update({ visibility, latest_version_id })
+        .eq('id', agentId)
+        .select('*')
+        .single();
+      if (error) throw error;
+      return data;
+    }
+
+    const { data: agent, error: agentError } = await supabase
+      .from('agents')
+      .select('*')
+      .eq('id', agentId)
+      .single();
+    if (agentError || !agent) throw agentError ?? new Error('Agent not found');
+    if (!agent.organization_id) throw new Error('Agent must belong to an organization to publish');
+
+    const slug = agent.name
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '')
+      .slice(0, 50) || `agent-${agent.id.slice(0, 8)}`;
+
+    const insertPayload = {
+      id: agentId,
+      org_id: agent.organization_id,
+      name: agent.name,
+      slug,
+      description: agent.description ?? null,
+      visibility,
+      latest_version_id
+    };
+
     const { data, error } = await supabase
       .from('marketplace_agents')
-      .update({ visibility })
-      .eq('id', agentId)
+      .insert([insertPayload])
       .select('*')
       .single();
+
     if (error) throw error;
     return data;
   },
