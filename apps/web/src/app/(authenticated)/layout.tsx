@@ -45,6 +45,12 @@ export default async function AuthenticatedLayout({ children }: { children: Reac
               Evaluations
             </Link>
             <Link
+              href="/experiments"
+              className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-emerald-500"
+            >
+              Experiments
+            </Link>
+            <Link
               href="/runs"
               className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-emerald-500"
             >

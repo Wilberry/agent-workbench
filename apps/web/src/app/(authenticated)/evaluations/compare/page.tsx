@@ -3,6 +3,7 @@ import type { Database } from '@/types/database';
 import { cookies, headers } from 'next/headers';
 import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-nextjs';
 import EvaluationCompareForm from '@/components/evaluations/EvaluationCompareForm';
+import { evaluations, agents } from '@agent-workbench/sdk';
 import type { EvaluationRun } from '@agent-workbench/sdk';
 
 export default async function EvaluationComparePage() {
@@ -15,17 +16,13 @@ export default async function EvaluationComparePage() {
     return <div className="p-6 text-red-400">Not authenticated.</div>;
   }
 
-  const [runsRes, datasetsRes, versionsRes, resultsRes] = await Promise.all([
-    supabase.from('evaluation_runs').select('*').order('created_at', { ascending: false }),
-    supabase.from('evaluation_datasets').select('id,name'),
-    supabase.from('agent_versions').select('id,version'),
-    supabase.from('evaluation_run_results').select('evaluation_run_id,exact_match')
+  const runs = await evaluations.listEvaluationRuns(undefined, supabase);
+  const [datasets, versions, results] = await Promise.all([
+    evaluations.listDatasets(undefined, undefined, supabase),
+    agents.listAllVersions(supabase),
+    runs.length > 0 ? evaluations.listEvaluationResults({ runIds: runs.map((run) => run.id) }, supabase) : []
   ]);
 
-  const runs = (runsRes.data ?? []) as EvaluationRun[];
-  const datasets = (datasetsRes.data ?? []) as Array<{ id: string; name: string }>;
-  const versions = (versionsRes.data ?? []) as Array<{ id: string; version: string }>;
-  const results = (resultsRes.data ?? []) as Array<{ evaluation_run_id: string; exact_match: boolean }>;
 
   const datasetMap = datasets.reduce<Record<string, string>>((acc, dataset) => {
     acc[dataset.id] = dataset.name;

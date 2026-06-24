@@ -1,6 +1,19 @@
 import { createServerSupabaseClient } from './supabaseClient';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Database, MarketplaceAgent, Organization, OrgBilling } from './types';
+import type {
+  Database,
+  MarketplaceAgent,
+  Organization,
+  OrgBilling,
+  OrganizationMembership,
+  OrgMembershipRole
+} from './types';
+
+export function canAssignRole(actorRole: OrgMembershipRole, targetRole: OrgMembershipRole) {
+  if (actorRole === 'owner') return true;
+  if (actorRole === 'admin') return targetRole === 'member' || targetRole === 'viewer';
+  return false;
+}
 
 export class QuotaExceededError extends Error {
   code = 'QUOTA_EXCEEDED';
@@ -30,7 +43,9 @@ export const orgs = {
         .select('*')
         .single();
 
-      if (error) return { data: null as Organization | null, error };
+      if (error) {
+        return { data: null as Organization | null, error };
+      }
       return { data: data as Organization, error: null };
     };
 
@@ -39,35 +54,45 @@ export const orgs = {
     let insertError: any = error;
 
     if (insertError) {
-      const message = insertError.message ?? String(insertError);
       const fallbackFields = ['slug', 'description', 'metadata'] as const;
       const fallbackPayload: Partial<Organization> & { owner_id?: string } = { ...payload };
-      let shouldRetry = false;
 
-      for (const field of fallbackFields) {
-        if (
-          message.includes(`column organizations.${field} does not exist`) ||
-          message.includes(`Could not find the '${field}' column`) ||
-          message.includes(`unknown column`) ||
-          message.includes(`invalid column`)
-        ) {
-          shouldRetry = true;
-          // delete with a cast to avoid strict index signature complaints
-          delete (fallbackPayload as any)[field];
+      for (let attempt = 0; attempt < fallbackFields.length + 1; attempt++) {
+        const message = insertError.message ?? String(insertError);
+        let removedField = false;
+
+        for (const field of fallbackFields) {
+          if (
+            field in fallbackPayload &&
+            (message.includes(`column organizations.${field} does not exist`) ||
+              message.includes(`Could not find the '${field}' column`) ||
+              message.includes(`Could not find the '${field}' column of 'organizations' in the schema cache`) ||
+              message.includes(`unknown column`) ||
+              message.includes(`invalid column`))
+          ) {
+            removedField = true;
+            delete (fallbackPayload as any)[field];
+          }
         }
-      }
 
-      if (shouldRetry) {
+        if (!removedField) break;
+
         const retryResult = await insertOrg(fallbackPayload);
         createdOrg = retryResult.data;
         insertError = retryResult.error;
+        if (!insertError) break;
       }
     }
 
     if (insertError || !createdOrg) throw insertError ?? new Error('Failed to create organization');
 
-    await supabase.from('organization_memberships').insert([{ org_id: createdOrg.id, user_id: userId, role: 'owner' }]);
-    await supabase.from('org_billing').insert([{ org_id: createdOrg.id, plan: 'free', tokens_used: 0, runs_used: 0 }]);
+    const membershipPayload = [{ org_id: createdOrg.id, user_id: userId, role: 'owner' }];
+    const { error: membershipError } = await supabase.from('organization_memberships').insert(membershipPayload);
+    if (membershipError) throw membershipError;
+
+    const billingPayload = [{ org_id: createdOrg.id, plan: 'free', tokens_used: 0, runs_used: 0 }];
+    const { error: billingError } = await supabase.from('org_billing').insert(billingPayload);
+    if (billingError) throw billingError;
     return createdOrg;
   },
 
@@ -81,6 +106,19 @@ export const orgs = {
 
     if (error) throw error;
     return data ?? [];
+  },
+
+  async listOrgsForUser(userId: string, client?: SupabaseClient<Database>) {
+    const supabase = client ?? createServerSupabaseClient();
+
+    const { data, error } = await supabase
+      .from('organization_memberships')
+      .select('organizations(*)')
+      .eq('user_id', userId);
+
+    if (error) throw error;
+    const memberships = data as unknown as Array<{ organizations: Organization }>;
+    return (memberships ?? []).map((membership) => membership.organizations);
   },
 
   async getOrg(orgId: string, client?: SupabaseClient<Database>) {
@@ -97,9 +135,66 @@ export const orgs = {
       .select('*')
       .eq('org_id', orgId)
       .eq('user_id', userId)
+      .maybeSingle();
+    if (error) throw error;
+    return data as OrganizationMembership | null;
+  },
+
+  async getMembershipById(membershipId: string, client?: SupabaseClient<Database>) {
+    const supabase = client ?? createServerSupabaseClient();
+    const { data, error } = await supabase
+      .from('organization_memberships')
+      .select('*')
+      .eq('id', membershipId)
+      .maybeSingle();
+    if (error) throw error;
+    return data as OrganizationMembership | null;
+  },
+
+  async listOrgMemberships(orgId: string, client?: SupabaseClient<Database>) {
+    const supabase = client ?? createServerSupabaseClient();
+    const { data, error } = await supabase
+      .from('organization_memberships')
+      .select('*')
+      .eq('org_id', orgId)
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    return (data ?? []) as OrganizationMembership[];
+  },
+
+  async addOrgMember(orgId: string, userId: string, role: OrgMembershipRole, client?: SupabaseClient<Database>) {
+    const supabase = client ?? createServerSupabaseClient();
+    const { data, error } = await supabase
+      .from('organization_memberships')
+      .insert([{ org_id: orgId, user_id: userId, role }])
+      .select('*')
       .single();
     if (error) throw error;
-    return data;
+    return data as OrganizationMembership;
+  },
+
+  async updateOrgMembership(membershipId: string, role: OrgMembershipRole, client?: SupabaseClient<Database>) {
+    const supabase = client ?? createServerSupabaseClient();
+    const { data, error } = await supabase
+      .from('organization_memberships')
+      .update({ role })
+      .eq('id', membershipId)
+      .select('*')
+      .single();
+    if (error) throw error;
+    return data as OrganizationMembership;
+  },
+
+  async removeOrgMembership(membershipId: string, client?: SupabaseClient<Database>) {
+    const supabase = client ?? createServerSupabaseClient();
+    const { error } = await supabase.from('organization_memberships').delete().eq('id', membershipId);
+    if (error) throw error;
+    return true;
+  },
+
+  async isOrgManager(orgId: string, userId: string, client?: SupabaseClient<Database>) {
+    const membership = await this.getMembership(orgId, userId, client);
+    return membership?.role === 'owner' || membership?.role === 'admin';
   },
 
   async listOrgAgents(orgId: string, client?: SupabaseClient<Database>) {
@@ -126,12 +221,66 @@ export const orgs = {
 
   async publishMarketplaceAgent(agentId: string, visibility: 'public' | 'private', client?: SupabaseClient<Database>) {
     const supabase = client ?? createServerSupabaseClient();
+
+    const { data: existingMarketplaceAgent, error: existingError } = await supabase
+      .from('marketplace_agents')
+      .select('*')
+      .eq('id', agentId)
+      .maybeSingle();
+    if (existingError) throw existingError;
+
+    const { data: latestVersion, error: latestVersionError } = await supabase
+      .from('agent_versions')
+      .select('id')
+      .eq('agent_id', agentId)
+      .order('version_number', { ascending: false })
+      .limit(1)
+      .single();
+    if (latestVersionError && latestVersionError.code !== 'PGRST116') throw latestVersionError;
+    const latest_version_id = latestVersion?.id ?? null;
+
+    if (existingMarketplaceAgent) {
+      const { data, error } = await supabase
+        .from('marketplace_agents')
+        .update({ visibility, latest_version_id })
+        .eq('id', agentId)
+        .select('*')
+        .single();
+      if (error) throw error;
+      return data;
+    }
+
+    const { data: agent, error: agentError } = await supabase
+      .from('agents')
+      .select('*')
+      .eq('id', agentId)
+      .single();
+    if (agentError || !agent) throw agentError ?? new Error('Agent not found');
+    if (!agent.organization_id) throw new Error('Agent must belong to an organization to publish');
+
+    const slug = agent.name
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '')
+      .slice(0, 50) || `agent-${agent.id.slice(0, 8)}`;
+
+    const insertPayload = {
+      id: agentId,
+      org_id: agent.organization_id,
+      name: agent.name,
+      slug,
+      description: agent.description ?? null,
+      visibility,
+      latest_version_id
+    };
+
     const { data, error } = await supabase
       .from('marketplace_agents')
-      .update({ visibility })
-      .eq('id', agentId)
+      .insert([insertPayload])
       .select('*')
       .single();
+
     if (error) throw error;
     return data;
   },

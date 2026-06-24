@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { cookies, headers } from 'next/headers';
 import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-nextjs';
-import { db } from '@/lib/db';
+import { agents } from '@agent-workbench/sdk';
 import type { Database } from '@/types/database';
 
 async function createVersion(formData: FormData, agentId: string) {
@@ -24,23 +24,18 @@ async function createVersion(formData: FormData, agentId: string) {
     throw new Error('Not authenticated');
   }
 
-  const { data: agent } = await supabase
-    .from('agents')
-    .select('*')
-    .eq('id', agentId)
-    .single();
-
+  const agent = await agents.get(agentId, supabase);
   if (!agent) {
     throw new Error('Agent not found');
   }
 
-  const nextVersion = await db.agents.createVersion(agentId, user.id, {
+  const nextVersion = await agents.createVersion(agentId, user.id, {
     version: name || undefined,
     description: description || undefined,
     system_prompt: system_prompt || undefined,
     model: model || undefined,
     workflow: workflow.length ? workflow : undefined
-  });
+  }, supabase);
 
   redirect(`/agents/${agentId}?versionCreated=true`);
 }
@@ -56,11 +51,8 @@ type Props = {
 
 export default async function NewVersionPage({ params, searchParams }: Props) {
   const supabase = createServerComponentSupabaseClient<Database>({ headers, cookies });
-  const { data: agent, error } = await supabase
-    .from('agents')
-    .select('*')
-    .eq('id', params.id)
-    .single();
+  const agent = await agents.get(params.id, supabase);
+  const error = !agent ? new Error('Agent not found') : null;
 
   if (error || !agent) {
     return <div className="p-6 text-red-400">Agent not found.</div>;

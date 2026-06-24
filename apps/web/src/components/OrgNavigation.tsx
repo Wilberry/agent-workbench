@@ -17,6 +17,12 @@ export default function OrgNavigation({ orgId }: { orgId: string }) {
       <Link href={`/orgs/${orgId}/traces`} className="rounded-lg border border-slate-700 bg-slate-900 px-4 py-2 text-sm hover:border-emerald-500">
         Traces
       </Link>
+      <Link
+        href={{ pathname: '/orgs/[orgId]/members', query: { orgId } }}
+        className="rounded-lg border border-slate-700 bg-slate-900 px-4 py-2 text-sm hover:border-emerald-500"
+      >
+        Members
+      </Link>
       <Link href={`/orgs/${orgId}/billing`} className="rounded-lg border border-slate-700 bg-slate-900 px-4 py-2 text-sm hover:border-emerald-500">
         Billing
       </Link>

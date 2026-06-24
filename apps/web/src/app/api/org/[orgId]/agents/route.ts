@@ -1,8 +1,24 @@
-import { NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@agent-workbench/sdk';
+import { NextRequest, NextResponse } from 'next/server';
+import { headers, cookies } from 'next/headers';
+import { createRouteHandlerSupabaseClient } from '@supabase/auth-helpers-nextjs';
+import { createServerSupabaseClient, orgs } from '@agent-workbench/sdk';
 
-export async function GET(_req: Request, { params }: { params: { orgId: string } }) {
+async function getAuthenticatedUser(request: NextRequest) {
+  const authClient = createRouteHandlerSupabaseClient({ headers, cookies });
+  const {
+    data: { user }
+  } = await authClient.auth.getUser();
+  return user;
+}
+
+export async function GET(request: NextRequest, { params }: { params: { orgId: string } }) {
+  const user = await getAuthenticatedUser(request);
+  if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+
   const supabase = createServerSupabaseClient();
+  const membership = await orgs.getMembership(params.orgId, user.id, supabase);
+  if (!membership) return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
+
   const { data, error } = await supabase
     .from('agents')
     .select('*')
@@ -13,15 +29,24 @@ export async function GET(_req: Request, { params }: { params: { orgId: string }
   return NextResponse.json({ agents: data });
 }
 
-export async function POST(req: Request, { params }: { params: { orgId: string } }) {
+export async function POST(request: NextRequest, { params }: { params: { orgId: string } }) {
+  const user = await getAuthenticatedUser(request);
+  if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+
   const supabase = createServerSupabaseClient();
-  const payload = await req.json();
+  const membership = await orgs.getMembership(params.orgId, user.id, supabase);
+  if (!membership) return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
+
+  const canManageOrg = await orgs.isOrgManager(params.orgId, user.id, supabase);
+  if (!canManageOrg) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
+
+  const payload = await request.json();
 
   const { data, error } = await supabase
     .from('agents')
     .insert([
       {
-        user_id: payload.user_id,
+        user_id: user.id,
         organization_id: params.orgId,
         name: payload.name,
         description: payload.description,

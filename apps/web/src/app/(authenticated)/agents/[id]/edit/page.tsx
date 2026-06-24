@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-nextjs';
+import { agents } from '@agent-workbench/sdk';
 import type { Database } from '@/types/database';
 import type { Agent } from '@agent-workbench/sdk';
 
@@ -26,20 +27,17 @@ async function updateAgent(formData: FormData, agentId: string) {
     throw new Error('Not authenticated');
   }
 
-  const { error } = await supabase
-    .from('agents')
-    .update({
+  await agents.updateByOwner(
+    agentId,
+    user.id,
+    {
       name,
       description: description || null,
       system_prompt,
       model
-    })
-    .eq('id', agentId)
-    .eq('user_id', user.id);
-
-  if (error) {
-    throw error;
-  }
+    },
+    supabase
+  );
 
   redirect(`/agents/${agentId}`);
 }
@@ -56,11 +54,7 @@ async function deleteAgent(_: FormData, agentId: string) {
     throw new Error('Not authenticated');
   }
 
-  const { error } = await supabase.from('agents').delete().eq('id', agentId).eq('user_id', user.id);
-
-  if (error) {
-    throw error;
-  }
+  await agents.deleteByOwner(agentId, user.id, supabase);
 
   redirect('/agents');
 }
@@ -81,12 +75,8 @@ export default async function EditAgentPage({ params }: Props) {
     return <div className="p-6 text-red-400">Not authenticated</div>;
   }
 
-  const { data: agent, error } = await supabase
-    .from('agents')
-    .select('id, name, description, system_prompt, model')
-    .eq('id', params.id)
-    .eq('user_id', user.id)
-    .single();
+  const agent = await agents.getByOwner(params.id, user.id, supabase);
+  const error = !agent ? new Error('Agent not found') : null;
 
   const typedAgent = agent as Agent | null;
 

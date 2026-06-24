@@ -3,6 +3,7 @@ import Link from 'next/link';
 import type { Database } from '@/types/database';
 import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-nextjs';
 import EvaluationResultsTable from '@/components/evaluations/EvaluationResultsTable';
+import { evaluations } from '@agent-workbench/sdk';
 import type { EvaluationDataset, EvaluationDatasetExample, EvaluationRun } from '@agent-workbench/sdk';
 
 type Params = {
@@ -21,29 +22,25 @@ export default async function EvaluationDatasetDetailPage({ params }: Params) {
     return <div className="p-6 text-red-400">Not authenticated.</div>;
   }
 
-  const [datasetRes, examplesRes, runsRes] = await Promise.all([
-    supabase.from('evaluation_datasets').select('*').eq('id', params.datasetId).single(),
-    supabase
-      .from('evaluation_dataset_examples')
-      .select('*')
-      .eq('dataset_id', params.datasetId)
-      .order('example_index', { ascending: true }),
-    supabase.from('evaluation_runs').select('*').eq('dataset_id', params.datasetId)
+  const [dataset, examples, runs] = await Promise.all([
+    evaluations.getDataset(params.datasetId, supabase),
+    evaluations.listDatasetExamples(params.datasetId, supabase),
+    evaluations.listEvaluationRuns({ datasetId: params.datasetId }, supabase)
   ]);
 
-  if (datasetRes.error || !datasetRes.data) {
+  if (!dataset) {
     return <div className="p-6 text-red-400">Dataset not found.</div>;
   }
 
-  const dataset = datasetRes.data as EvaluationDataset;
-  const examples = (examplesRes.data ?? []) as EvaluationDatasetExample[];
-  const runs = (runsRes.data ?? []) as EvaluationRun[];
+  const datasetRecord = dataset as EvaluationDataset;
+  const examplesList = examples as EvaluationDatasetExample[];
+  const runsList = runs as EvaluationRun[];
 
-  const completedRuns = runs.filter((run) => run.status === 'completed');
+  const completedRuns = runsList.filter((run) => run.status === 'completed');
   const averageScore = completedRuns.length
     ? completedRuns.reduce((sum, run) => sum + Number(run.summary?.exact_match_rate ?? 0), 0) / completedRuns.length
     : 0;
-  const totalRuns = runs.length;
+  const totalRuns = runsList.length;
   const passRate = completedRuns.length ? averageScore : 0;
 
   return (
@@ -119,7 +116,7 @@ export default async function EvaluationDatasetDetailPage({ params }: Params) {
         </div>
 
         <EvaluationResultsTable
-          rows={examples.map((example, index) => ({
+          rows={examplesList.map((example, index) => ({
             id: example.id,
             index: example.example_index,
             input: example.input,

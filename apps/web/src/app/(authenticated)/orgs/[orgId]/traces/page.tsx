@@ -2,6 +2,7 @@ import { cookies, headers } from 'next/headers';
 import Link from 'next/link';
 import type { Database } from '@/types/database';
 import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-nextjs';
+import { agentRuns } from '@agent-workbench/sdk';
 import OrgTraceAnalytics from '@/components/OrgTraceAnalytics';
 
 type AgentRun = Database['public']['Tables']['agent_runs']['Row'];
@@ -16,13 +17,9 @@ type TracePoint = {
 
 export default async function OrgTraceExplorerPage({ params }: { params: { orgId: string } }) {
   const supabase = createServerComponentSupabaseClient<Database>({ headers, cookies });
-  const { data: runs, error } = await supabase
-    .from('agent_runs')
-    .select('*')
-    .eq('organization_id', params.orgId)
-    .order('created_at', { ascending: false });
+  const orgRunsData = await agentRuns.listOrgRuns(params.orgId, 50, supabase);
 
-  if (error) {
+  if (!orgRunsData) {
     return (
       <div className="rounded-3xl border border-slate-700 bg-slate-900 p-6 text-red-400">
         Could not load organization traces.
@@ -30,7 +27,7 @@ export default async function OrgTraceExplorerPage({ params }: { params: { orgId
     );
   }
 
-  const orgRuns = (runs ?? []) as AgentRun[];
+  const orgRuns = (orgRunsData ?? []) as AgentRun[];
   const totalRuns = orgRuns.length;
   const statusCounts = orgRuns.reduce(
     (counts, run) => {

@@ -2,6 +2,7 @@ import { cookies, headers } from 'next/headers';
 import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-nextjs';
 import type { Database } from '@/types/database';
 import AgentChat from '@/components/AgentChat';
+import { conversations as conversationSdk } from '@agent-workbench/sdk';
 
 type Props = {
   params: {
@@ -15,14 +16,9 @@ export default async function ConversationPage({ params }: Props) {
     data: { user }
   } = await supabase.auth.getUser();
 
-  const { data: conversation, error: conversationError } = await supabase
-    .from('conversations')
-    .select('id, title, agent_id')
-    .eq('id', params.id)
-    .eq('user_id', user?.id ?? '')
-    .single();
+  const conversation = await conversationSdk.get(params.id, supabase);
 
-  if (conversationError || !conversation) {
+  if (!conversation || conversation.user_id !== user?.id) {
     return (
       <main className="min-h-screen bg-slate-950 text-white p-6">
         <div className="mx-auto max-w-5xl rounded-3xl border border-red-700 bg-slate-900 p-6 text-red-300">

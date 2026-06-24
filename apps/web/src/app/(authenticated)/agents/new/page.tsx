@@ -2,6 +2,7 @@ import { cookies, headers } from 'next/headers';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-nextjs';
+import { agents } from '@agent-workbench/sdk';
 import type { Database } from '@/types/database';
 
 async function createAgent(formData: FormData) {
@@ -25,22 +26,20 @@ async function createAgent(formData: FormData) {
     throw new Error('Not authenticated');
   }
 
-  const { data, error } = await supabase
-    .from('agents')
-    .insert([
-      {
-        user_id: user.id,
-        name,
-        description: description || null,
-        system_prompt,
-        model
-      }
-    ])
-    .select('id')
-    .single();
+  const agent = await agents.create(
+    user.id,
+    {
+      name,
+      description: description || undefined,
+      system_prompt,
+      model
+    },
+    null,
+    supabase
+  );
 
-  if (error || !data) {
-    throw error ?? new Error('Failed to create agent');
+  if (!agent) {
+    throw new Error('Failed to create agent');
   }
 
   redirect(`/agents?success=true`);

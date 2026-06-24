@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createServerSupabaseClient } from '@agent-workbench/sdk';
 import { createClient } from '@supabase/supabase-js';
+import { createTestAuthUser } from '../utils/createTestAuthUser';
 import { randomUUID } from 'crypto';
 
 const serviceClient = createServerSupabaseClient();
@@ -20,8 +21,7 @@ afterEach(async () => {
 
 describe('Security validation - RLS isolation', () => {
   it('denies anonymous read access for agent rows', async () => {
-    const userId = randomUUID();
-    const orgId = randomUUID();
+    const userId = await createTestAuthUser();
 
     const { data: agent, error: agentError } = await serviceClient
       .from('agents')
@@ -32,7 +32,7 @@ describe('Security validation - RLS isolation', () => {
           description: 'Testing cross-org denial',
           system_prompt: 'Keep output isolated.',
           model: 'gpt-4o-mini',
-          organization_id: orgId
+          organization_id: null
         }
       ])
       .select('id')
@@ -46,7 +46,7 @@ describe('Security validation - RLS isolation', () => {
       .from('agents')
       .select('*')
       .eq('id', agent!.id)
-      .single();
+      .maybeSingle();
 
     expect(anonError).toBeNull();
     expect(anonAgent).toBeNull();

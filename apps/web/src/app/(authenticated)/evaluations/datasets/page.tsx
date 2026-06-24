@@ -3,6 +3,7 @@ import Link from 'next/link';
 import type { Database } from '@/types/database';
 import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-nextjs';
 import EvaluationDatasetTable from '@/components/evaluations/EvaluationDatasetTable';
+import { evaluations } from '@agent-workbench/sdk';
 import type { EvaluationDataset } from '@agent-workbench/sdk';
 
 export default async function EvaluationsDatasetsPage() {
@@ -15,22 +16,10 @@ export default async function EvaluationsDatasetsPage() {
     return <div className="p-6 text-red-400">Not authenticated.</div>;
   }
 
-  const datasetsRes = await supabase
-    .from('evaluation_datasets')
-    .select('*')
-    .order('created_at', { ascending: false });
-  const examplesRes = await supabase.from('evaluation_dataset_examples').select('dataset_id');
+  const datasets = await evaluations.listDatasets(undefined, undefined, supabase);
+  const exampleCounts = await evaluations.listDatasetExampleCounts(supabase);
 
-  const datasets = (datasetsRes.data ?? []) as EvaluationDataset[];
-  const exampleRows = examplesRes.data ?? [];
-
-  const exampleCounts = exampleRows.reduce<Record<string, number>>((acc, example) => {
-    if (!example?.dataset_id) return acc;
-    acc[example.dataset_id] = (acc[example.dataset_id] ?? 0) + 1;
-    return acc;
-  }, {});
-
-  const datasetsWithCount = datasets.map((dataset) => ({
+  const datasetsWithCount = (datasets as EvaluationDataset[]).map((dataset) => ({
     ...dataset,
     exampleCount: exampleCounts[dataset.id] ?? 0
   }));

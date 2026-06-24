@@ -1,5 +1,7 @@
-import { NextResponse } from 'next/server';
-import { createServerSupabaseClient, agents } from '@agent-workbench/sdk';
+import { NextRequest, NextResponse } from 'next/server';
+import { headers, cookies } from 'next/headers';
+import { createRouteHandlerSupabaseClient } from '@supabase/auth-helpers-nextjs';
+import { createServerSupabaseClient, agents, orgs } from '@agent-workbench/sdk';
 
 function sanitizeSlug(value: string) {
   const baseSlug = value
@@ -10,9 +12,21 @@ function sanitizeSlug(value: string) {
   return `${baseSlug || 'agent'}-${value.slice(0, 8)}`;
 }
 
-export async function PATCH(req: Request, { params }: { params: { orgId: string; agentId: string } }) {
+export async function PATCH(request: NextRequest, { params }: { params: { orgId: string; agentId: string } }) {
+  const authClient = createRouteHandlerSupabaseClient({ headers, cookies });
+  const {
+    data: { user }
+  } = await authClient.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+
   const supabase = createServerSupabaseClient();
-  const payload = await req.json();
+  const membership = await orgs.getMembership(params.orgId, user.id, supabase);
+  if (!membership) return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
+
+  const canManageOrg = await orgs.isOrgManager(params.orgId, user.id, supabase);
+  if (!canManageOrg) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
+
+  const payload = await request.json();
   const visibility = payload.visibility === 'public' ? 'public' : 'private';
 
   const { data: agent, error: agentError } = await supabase

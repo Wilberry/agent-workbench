@@ -3,6 +3,8 @@ import { cookies, headers } from 'next/headers';
 import type { Database } from '@/types/database';
 import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-nextjs';
 import { db } from '@/lib/db';
+import { agentRuns } from '@agent-workbench/sdk';
+import { conversations as conversationSdk } from '@agent-workbench/sdk';
 import ReplayButton from '@/components/ReplayButton';
 
 type Params = {
@@ -21,20 +23,19 @@ export default async function ReplayPage({ params }: Params) {
     return <div className="p-6 text-red-400">Not authenticated.</div>;
   }
 
-  // Get the original run
-  const { data: run } = await supabase
-    .from('agent_runs')
-    .select('*, conversations!inner(agent_id)')
-    .eq('id', params.runId)
-    .eq('user_id', user.id)
-    .single();
+  const run = await agentRuns.get(params.runId, supabase);
 
-  if (!run) {
+  if (!run || run.user_id !== user.id) {
     return <div className="p-6 text-red-400">Run not found or access denied.</div>;
   }
 
-  // Get all agent versions for this run's agent
-  const agentId = (run.conversations as any)?.agent_id;
+  const conversation = await conversationSdk.get(run.conversation_id, supabase);
+
+  if (!conversation || conversation.user_id !== user.id) {
+    return <div className="p-6 text-red-400">Run not found or access denied.</div>;
+  }
+
+  const agentId = conversation.agent_id;
   const versions = await db.agents.listVersions(agentId);
 
   return (

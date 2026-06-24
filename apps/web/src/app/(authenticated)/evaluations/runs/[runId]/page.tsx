@@ -4,6 +4,7 @@ import type { Database } from '@/types/database';
 import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-nextjs';
 import EvaluationStatusBadge from '@/components/evaluations/EvaluationStatusBadge';
 import EvaluationResultsTable from '@/components/evaluations/EvaluationResultsTable';
+import { evaluations, agents } from '@agent-workbench/sdk';
 import type { EvaluationRun, EvaluationRunResult, EvaluationDatasetExample } from '@agent-workbench/sdk';
 
 type Params = {
@@ -22,34 +23,23 @@ export default async function EvaluationRunDetailPage({ params }: Params) {
     return <div className="p-6 text-red-400">Not authenticated.</div>;
   }
 
-  const [runRes, datasetRes, versionRes] = await Promise.all([
-    supabase.from('evaluation_runs').select('*').eq('id', params.runId).single(),
-    supabase.from('evaluation_datasets').select('id,name').single(),
-    supabase.from('agent_versions').select('id,version').single()
-  ]);
-
-  if (runRes.error || !runRes.data) {
+  const run = await evaluations.getEvaluationRun(params.runId, supabase);
+  if (!run) {
     return <div className="p-6 text-red-400">Evaluation run not found.</div>;
   }
 
-  const run = runRes.data as EvaluationRun;
-  const datasetName = (datasetRes.data as { id: string; name: string } | null)?.name ?? 'Unknown dataset';
-  const versionLabel = (versionRes.data as { id: string; version: string } | null)?.version ?? 'Unknown version';
+  const [dataset, version, results] = await Promise.all([
+    evaluations.getDataset(run.dataset_id, supabase),
+    agents.getVersion(run.agent_version_id, supabase),
+    evaluations.getEvaluationResults(run.id, supabase)
+  ]);
 
-  const resultsRes = await supabase
-    .from('evaluation_run_results')
-    .select('*')
-    .eq('evaluation_run_id', run.id)
-    .order('created_at', { ascending: true });
-
-  const resultRows = (resultsRes.data ?? []) as EvaluationRunResult[];
+  const datasetName = dataset?.name ?? 'Unknown dataset';
+  const versionLabel = version?.version ?? 'Unknown version';
+  const resultRows = results as EvaluationRunResult[];
   const exampleIds = resultRows.map((result) => result.example_id);
-  const examplesRes = await supabase
-    .from('evaluation_dataset_examples')
-    .select('*')
-    .in('id', exampleIds);
+  const examples = exampleIds.length > 0 ? await evaluations.getDatasetExamplesByIds(exampleIds, supabase) : [];
 
-  const examples = (examplesRes.data ?? []) as EvaluationDatasetExample[];
   const exampleMap = examples.reduce<Record<string, EvaluationDatasetExample>>((acc, example) => {
     acc[example.id] = example;
     return acc;

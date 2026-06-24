@@ -5,6 +5,7 @@ import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-next
 import EvaluationRunSummaryCard from '@/components/evaluations/EvaluationRunSummaryCard';
 import EvaluationStatusBadge from '@/components/evaluations/EvaluationStatusBadge';
 import EvaluationAnalytics from '@/components/EvaluationAnalytics';
+import { evaluations } from '@agent-workbench/sdk';
 import type { EvaluationDataset, EvaluationRun } from '@agent-workbench/sdk';
 
 export default async function EvaluationsDashboardPage() {
@@ -17,29 +18,11 @@ export default async function EvaluationsDashboardPage() {
     return <div className="p-6 text-red-400">Not authenticated.</div>;
   }
 
-  const [datasetsRes, runsRes, examplesRes] = await Promise.all([
-    supabase
-      .from('evaluation_datasets')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(6),
-    supabase
-      .from('evaluation_runs')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(50), // Increased from 8 to 50 for better trend analysis with ~30+ data points per version
-    supabase.from('evaluation_dataset_examples').select('dataset_id')
+  const [datasets, runs, datasetExampleCounts] = await Promise.all([
+    evaluations.listDatasets(undefined, undefined, supabase),
+    evaluations.listEvaluationRuns({ limit: 50 }, supabase),
+    evaluations.listDatasetExampleCounts(supabase)
   ]);
-
-  const datasets = (datasetsRes.data ?? []) as EvaluationDataset[];
-  const runs = (runsRes.data ?? []) as EvaluationRun[];
-  const exampleRows = examplesRes.data ?? [];
-
-  const exampleCounts = exampleRows.reduce<Record<string, number>>((acc, example) => {
-    if (!example?.dataset_id) return acc;
-    acc[example.dataset_id] = (acc[example.dataset_id] ?? 0) + 1;
-    return acc;
-  }, {});
 
   const runCounts = runs.reduce(
     (acc, item) => {
@@ -80,7 +63,7 @@ export default async function EvaluationsDashboardPage() {
               subtitle="Recent dataset count"
               metricLabel="Datasets"
               metricValue={datasets.length}
-              details={`${Object.values(exampleCounts).reduce((sum, count) => sum + count, 0)} dataset examples`}
+              details={`${Object.values(datasetExampleCounts).reduce((sum, count) => sum + (count as number), 0)} dataset examples`}
             />
             <EvaluationRunSummaryCard
               title="Evaluation runs"
@@ -131,7 +114,7 @@ export default async function EvaluationsDashboardPage() {
                         <div className="font-semibold text-white">{dataset.name}</div>
                         <div className="text-sm text-slate-400">{dataset.description ?? 'No description'}</div>
                       </div>
-                      <span className="text-sm text-slate-400">{exampleCounts[dataset.id] ?? 0} examples</span>
+                      <span className="text-sm text-slate-400">{datasetExampleCounts[dataset.id] ?? 0} examples</span>
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {dataset.tags.map((tag: string) => (
