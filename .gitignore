@@ -41,6 +41,14 @@ Thumbs.db
 # Temporary debug and migration artifacts
 mp-*.js
 tmp-*.sql
+auditor-output*.txt
+release_audit_output*.txt
+migration_state.sql
+migration_tables.sql
+schema_columns.json
+schema_query.sql
+tmp_org_columns.sql
+release-readiness-report.md
 # Investigation / audit artifacts
 audit-output*.txt
 release_audit_output*.txt
