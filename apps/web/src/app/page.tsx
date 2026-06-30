@@ -1,30 +1,56 @@
-import Link from 'next/link';
+import { Architecture, Audience, BuildVsBuy, Contact, FAQ, Features, Footer, GitHubCTA, Hero, Matters, Metrics, OpenSource, Principles, Problem, Production, Roadmap, TechnologyStack, UseCases, Vision, WhyOpenSource } from '@/components/landing/Sections';
+import { Navbar } from '@/components/landing/Navbar';
+
+const jsonLd = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    name: 'Agent Workbench',
+    applicationCategory: 'DeveloperApplication',
+    operatingSystem: 'Web',
+    description: 'Open-source AgentOps infrastructure for building, evaluating, observing, and operating AI agents in production.',
+    license: 'https://opensource.org/license/mit',
+    codeRepository: 'https://github.com/wilberry/agent-workbench'
+  },
+  {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    name: 'Agent Workbench',
+    url: 'https://agent-workbench.dev',
+    sameAs: ['https://github.com/wilberry/agent-workbench']
+  },
+  {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [{ '@type': 'ListItem', position: 1, name: 'Home', item: 'https://agent-workbench.dev' }]
+  }
+];
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-slate-950 text-white">
-      <div className="mx-auto flex min-h-screen max-w-5xl flex-col justify-center px-6 py-12">
-        <div className="rounded-[32px] border border-slate-800 bg-slate-900 p-10 shadow-xl shadow-slate-950/40">
-          <h1 className="text-5xl font-semibold">Agent Workbench</h1>
-          <p className="mt-4 max-w-2xl text-lg leading-8 text-slate-400">
-            Build, chat, and iterate on AI agents using a TypeScript monorepo with Next.js, Supabase, and streaming runtime support.
-          </p>
-          <div className="mt-8 flex flex-col gap-4 sm:flex-row">
-            <Link
-              href="/login"
-              className="rounded-2xl bg-emerald-500 px-6 py-4 text-center font-semibold text-slate-950"
-            >
-              Sign in
-            </Link>
-            <Link
-              href="/agents"
-              className="rounded-2xl border border-slate-700 px-6 py-4 text-center font-semibold text-slate-200"
-            >
-              View agents
-            </Link>
-          </div>
-        </div>
-      </div>
+    <main className="min-h-screen overflow-x-hidden bg-slate-950 text-slate-100 selection:bg-cyan-300 selection:text-slate-950">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <Navbar />
+      <Hero />
+      <Metrics />
+      <Problem />
+      <Audience />
+      <Features />
+      <UseCases />
+      <BuildVsBuy />
+      <Production />
+      <Architecture />
+      <TechnologyStack />
+      <Matters />
+      <Roadmap />
+      <OpenSource />
+      <WhyOpenSource />
+      <GitHubCTA />
+      <FAQ />
+      <Principles />
+      <Vision />
+      <Contact />
+      <Footer />
     </main>
   );
 }
