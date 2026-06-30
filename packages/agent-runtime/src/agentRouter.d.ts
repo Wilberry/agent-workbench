@@ -10,6 +10,12 @@ export type ExecutionTrace = {
     total_tokens?: number;
     estimated_cost?: number;
     latency_ms?: number;
+    steps?: Array<{
+        name: string;
+        latency?: number;
+        input?: unknown;
+        output?: unknown;
+    }>;
 };
 type MemorySnippet = {
     role: 'user' | 'assistant';
@@ -33,6 +39,6 @@ export declare function callOpenAI(messages: Array<{
     role: string;
     content: string;
 }>, model?: string): Promise<LLMResponse>;
-export declare function runMultiAgentWorkflow({ userId, conversationId, message, workflow, memories, runId }: AgentWorkflowInput, modelOverride?: string): Promise<AgentWorkflowResult>;
+export declare function runMultiAgentWorkflow({ userId, conversationId, message, workflow, memories, systemPrompt, runId }: AgentWorkflowInput, modelOverride?: string): Promise<AgentWorkflowResult>;
 export {};
 //# sourceMappingURL=agentRouter.d.ts.map

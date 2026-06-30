@@ -1,0 +1,426 @@
+
+ RUN  v4.1.8 C:/Users/wilson/Desktop/Projects/agent-workbench
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Install Workflow > should allow member to install into their org
+setupTestOrgs: creating sourceOwner
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Install Workflow > should allow member to install into their org
+setupTestOrgs: created sourceOwner 70652e20-29ed-4899-b1be-eb40f11281d9
+setupTestOrgs: creating targetOwner
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Install Workflow > should allow member to install into their org
+setupTestOrgs: created targetOwner 752edb59-3c94-4f7a-ac21-d373c4bc007f
+setupTestOrgs: creating targetMember
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Install Workflow > should allow member to install into their org
+setupTestOrgs: created targetMember cc1ff996-586a-47ad-b79e-cd1582e9201e
+setupTestOrgs: creating targetViewer
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Install Workflow > should allow member to install into their org
+setupTestOrgs: created targetViewer c46ead12-b260-4854-87b4-1bb7e8ab2cd4
+setupTestOrgs: creating sourceOrg
+orgs.createOrg: insertPayload {
+  name: 'Source Org 1782313375428',
+  slug: 'source-org-1782313375428',
+  description: 'Source marketplace org',
+  owner_id: '70652e20-29ed-4899-b1be-eb40f11281d9'
+}
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Install Workflow > should allow member to install into their org
+orgs.createOrg: organizations insert succeeded {
+  id: 'fb41548b-a53f-43be-b5c3-f479805d6e50',
+  owner_id: '70652e20-29ed-4899-b1be-eb40f11281d9',
+  name: 'Source Org 1782313375428',
+  created_at: '2026-06-24T15:02:55.515681+00:00',
+  slug: 'source-org-1782313375428',
+  description: 'Source marketplace org',
+  metadata: {}
+}
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Install Workflow > should allow member to install into their org
+orgs.createOrg: inserting organization_memberships [
+  {
+    org_id: 'fb41548b-a53f-43be-b5c3-f479805d6e50',
+    user_id: '70652e20-29ed-4899-b1be-eb40f11281d9',
+    role: 'owner'
+  }
+]
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Install Workflow > should allow member to install into their org
+orgs.createOrg: inserting org_billing [
+  {
+    org_id: 'fb41548b-a53f-43be-b5c3-f479805d6e50',
+    plan: 'free',
+    tokens_used: 0,
+    runs_used: 0
+  }
+]
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Install Workflow > should allow member to install into their org
+orgs.createOrg: created organization, membership, and billing records for org fb41548b-a53f-43be-b5c3-f479805d6e50
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Install Workflow > should allow member to install into their org
+agents.create: insertPayload [
+  {
+    user_id: '70652e20-29ed-4899-b1be-eb40f11281d9',
+    organization_id: 'fb41548b-a53f-43be-b5c3-f479805d6e50',
+    name: 'Marketplace Test Agent',
+    description: 'Test agent for marketplace',
+    system_prompt: 'You are a helpful test agent',
+    model: 'gpt-4o-mini'
+  }
+]
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Install Workflow > should allow member to install into their org
+agents.create: insert succeeded {
+  id: '489b3016-34d9-44af-9625-4936505fbbc1',
+  user_id: '70652e20-29ed-4899-b1be-eb40f11281d9',
+  name: 'Marketplace Test Agent',
+  description: 'Test agent for marketplace',
+  system_prompt: 'You are a helpful test agent',
+  model: 'gpt-4o-mini',
+  created_at: '2026-06-24T15:02:55.993721+00:00',
+  organization_id: 'fb41548b-a53f-43be-b5c3-f479805d6e50'
+}
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Install Workflow > should allow member to install into their org
+agents.createVersion: insertPayload {
+  agent_id: '489b3016-34d9-44af-9625-4936505fbbc1',
+  version: 'v1.0.0',
+  version_number: 1,
+  description: 'Initial marketplace version',
+  system_prompt: 'You are a helpful test agent',
+  workflow: [],
+  tools: [],
+  metadata: { public: 'true' },
+  created_by: '70652e20-29ed-4899-b1be-eb40f11281d9',
+  model: 'gpt-4o-mini'
+}
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Install Workflow > should allow member to install into their org
+agents.createVersion: insert succeeded {
+  id: '3446705e-0c7a-454d-a0dc-d38955cc5ef8',
+  agent_id: '489b3016-34d9-44af-9625-4936505fbbc1',
+  version: 'v1.0.0',
+  description: 'Initial marketplace version',
+  system_prompt: 'You are a helpful test agent',
+  workflow: [],
+  metadata: { public: 'true' },
+  created_at: '2026-06-24T15:02:56.469695+00:00',
+  version_number: 1,
+  created_by: '70652e20-29ed-4899-b1be-eb40f11281d9',
+  tools: [],
+  model: 'gpt-4o-mini'
+}
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Install Workflow > should allow member to install into their org
+orgs.publishMarketplaceAgent: agentId 489b3016-34d9-44af-9625-4936505fbbc1 visibility public
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Install Workflow > should allow member to install into their org
+orgs.publishMarketplaceAgent: existingMarketplaceAgent null
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Install Workflow > should allow member to install into their org
+orgs.publishMarketplaceAgent: latest_version_id 3446705e-0c7a-454d-a0dc-d38955cc5ef8
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Install Workflow > should allow member to install into their org
+orgs.publishMarketplaceAgent: inserting marketplace agent {
+  id: '489b3016-34d9-44af-9625-4936505fbbc1',
+  org_id: 'fb41548b-a53f-43be-b5c3-f479805d6e50',
+  name: 'Marketplace Test Agent',
+  slug: 'marketplace-test-agent',
+  description: 'Test agent for marketplace',
+  visibility: 'public',
+  latest_version_id: '3446705e-0c7a-454d-a0dc-d38955cc5ef8'
+}
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Install Workflow > should allow member to install into their org
+orgs.publishMarketplaceAgent: inserted marketplace agent {
+  id: '489b3016-34d9-44af-9625-4936505fbbc1',
+  org_id: 'fb41548b-a53f-43be-b5c3-f479805d6e50',
+  name: 'Marketplace Test Agent',
+  slug: 'marketplace-test-agent',
+  description: 'Test agent for marketplace',
+  visibility: 'public',
+  latest_version_id: '3446705e-0c7a-454d-a0dc-d38955cc5ef8',
+  created_at: '2026-06-24T15:02:57.103537+00:00',
+  updated_at: '2026-06-24T15:02:57.103537+00:00'
+}
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Install Workflow > should allow member to install into their org
+orgs.createOrg: insertPayload {
+  name: 'Target Org 1782313377179',
+  slug: 'target-org-1782313377179',
+  description: 'Target org for install test',
+  owner_id: '752edb59-3c94-4f7a-ac21-d373c4bc007f'
+}
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Install Workflow > should allow member to install into their org
+orgs.createOrg: organizations insert succeeded {
+  id: '12bae872-99a7-4181-91fe-65372fe6501b',
+  owner_id: '752edb59-3c94-4f7a-ac21-d373c4bc007f',
+  name: 'Target Org 1782313377179',
+  created_at: '2026-06-24T15:02:57.271386+00:00',
+  slug: 'target-org-1782313377179',
+  description: 'Target org for install test',
+  metadata: {}
+}
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Install Workflow > should allow member to install into their org
+orgs.createOrg: inserting organization_memberships [
+  {
+    org_id: '12bae872-99a7-4181-91fe-65372fe6501b',
+    user_id: '752edb59-3c94-4f7a-ac21-d373c4bc007f',
+    role: 'owner'
+  }
+]
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Install Workflow > should allow member to install into their org
+orgs.createOrg: inserting org_billing [
+  {
+    org_id: '12bae872-99a7-4181-91fe-65372fe6501b',
+    plan: 'free',
+    tokens_used: 0,
+    runs_used: 0
+  }
+]
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Install Workflow > should allow member to install into their org
+orgs.createOrg: created organization, membership, and billing records for org 12bae872-99a7-4181-91fe-65372fe6501b
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Install Workflow > should allow member to install into their org
+marketplace.installAgent: versionId 3446705e-0c7a-454d-a0dc-d38955cc5ef8 orgId 12bae872-99a7-4181-91fe-65372fe6501b userId cc1ff996-586a-47ad-b79e-cd1582e9201e agentName Member Installed Agent
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Install Workflow > should allow member to install into their org
+marketplace.installAgent: membership check passed
+getSourceVersionAndAgent: sourceVersionId 3446705e-0c7a-454d-a0dc-d38955cc5ef8
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Install Workflow > should allow member to install into their org
+getSourceVersionAndAgent: sourceVersion found 3446705e-0c7a-454d-a0dc-d38955cc5ef8 agent_id 489b3016-34d9-44af-9625-4936505fbbc1
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Install Workflow > should allow member to install into their org
+getSourceVersionAndAgent: sourceAgent found 489b3016-34d9-44af-9625-4936505fbbc1
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Install Workflow > should allow member to install into their org
+marketplace.installAgent: sourceVersion 3446705e-0c7a-454d-a0dc-d38955cc5ef8 sourceAgent 489b3016-34d9-44af-9625-4936505fbbc1
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Install Workflow > should allow member to install into their org
+marketplace.installAgent: marketplaceAgent 489b3016-34d9-44af-9625-4936505fbbc1 visibility public
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Install Workflow > should allow member to install into their org
+marketplace.installAgent: created installed agent aab00440-cf1d-4353-81be-0cf2336f3c76
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Fork Workflow > should allow member to fork agents
+setupTestOrgs: creating sourceOwner
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Fork Workflow > should allow member to fork agents
+setupTestOrgs: created sourceOwner 688cc7d5-dca0-404e-88fd-6e73d9eaf065
+setupTestOrgs: creating targetOwner
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Fork Workflow > should allow member to fork agents
+setupTestOrgs: created targetOwner 9ca67ac1-f6e5-4f32-90e9-deefe85eec0e
+setupTestOrgs: creating targetMember
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Fork Workflow > should allow member to fork agents
+setupTestOrgs: created targetMember 62baabaa-62da-4d05-a465-7ed6fdb0f4fe
+setupTestOrgs: creating targetViewer
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Fork Workflow > should allow member to fork agents
+setupTestOrgs: created targetViewer 1938dfc4-3319-4e1b-8361-96477fb83d51
+setupTestOrgs: creating sourceOrg
+orgs.createOrg: insertPayload {
+  name: 'Source Org 1782313428013',
+  slug: 'source-org-1782313428013',
+  description: 'Source marketplace org',
+  owner_id: '688cc7d5-dca0-404e-88fd-6e73d9eaf065'
+}
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Fork Workflow > should allow member to fork agents
+orgs.createOrg: organizations insert succeeded {
+  id: '97d363e6-3c9e-41d5-96fd-0332da678324',
+  owner_id: '688cc7d5-dca0-404e-88fd-6e73d9eaf065',
+  name: 'Source Org 1782313428013',
+  created_at: '2026-06-24T15:03:48.118678+00:00',
+  slug: 'source-org-1782313428013',
+  description: 'Source marketplace org',
+  metadata: {}
+}
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Fork Workflow > should allow member to fork agents
+orgs.createOrg: inserting organization_memberships [
+  {
+    org_id: '97d363e6-3c9e-41d5-96fd-0332da678324',
+    user_id: '688cc7d5-dca0-404e-88fd-6e73d9eaf065',
+    role: 'owner'
+  }
+]
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Fork Workflow > should allow member to fork agents
+orgs.createOrg: inserting org_billing [
+  {
+    org_id: '97d363e6-3c9e-41d5-96fd-0332da678324',
+    plan: 'free',
+    tokens_used: 0,
+    runs_used: 0
+  }
+]
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Fork Workflow > should allow member to fork agents
+orgs.createOrg: created organization, membership, and billing records for org 97d363e6-3c9e-41d5-96fd-0332da678324
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Fork Workflow > should allow member to fork agents
+agents.create: insertPayload [
+  {
+    user_id: '688cc7d5-dca0-404e-88fd-6e73d9eaf065',
+    organization_id: '97d363e6-3c9e-41d5-96fd-0332da678324',
+    name: 'Marketplace Test Agent',
+    description: 'Test agent for marketplace',
+    system_prompt: 'You are a helpful test agent',
+    model: 'gpt-4o-mini'
+  }
+]
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Fork Workflow > should allow member to fork agents
+agents.create: insert succeeded {
+  id: 'bea6d906-ccf5-4c7b-bae8-af2ba820a47b',
+  user_id: '688cc7d5-dca0-404e-88fd-6e73d9eaf065',
+  name: 'Marketplace Test Agent',
+  description: 'Test agent for marketplace',
+  system_prompt: 'You are a helpful test agent',
+  model: 'gpt-4o-mini',
+  created_at: '2026-06-24T15:03:48.601627+00:00',
+  organization_id: '97d363e6-3c9e-41d5-96fd-0332da678324'
+}
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Fork Workflow > should allow member to fork agents
+agents.createVersion: insertPayload {
+  agent_id: 'bea6d906-ccf5-4c7b-bae8-af2ba820a47b',
+  version: 'v1.0.0',
+  version_number: 1,
+  description: 'Initial marketplace version',
+  system_prompt: 'You are a helpful test agent',
+  workflow: [],
+  tools: [],
+  metadata: { public: 'true' },
+  created_by: '688cc7d5-dca0-404e-88fd-6e73d9eaf065',
+  model: 'gpt-4o-mini'
+}
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Fork Workflow > should allow member to fork agents
+agents.createVersion: insert succeeded {
+  id: 'eb3accf7-afd8-483d-a036-803ff6aa21f4',
+  agent_id: 'bea6d906-ccf5-4c7b-bae8-af2ba820a47b',
+  version: 'v1.0.0',
+  description: 'Initial marketplace version',
+  system_prompt: 'You are a helpful test agent',
+  workflow: [],
+  metadata: { public: 'true' },
+  created_at: '2026-06-24T15:03:49.075109+00:00',
+  version_number: 1,
+  created_by: '688cc7d5-dca0-404e-88fd-6e73d9eaf065',
+  tools: [],
+  model: 'gpt-4o-mini'
+}
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Fork Workflow > should allow member to fork agents
+orgs.publishMarketplaceAgent: agentId bea6d906-ccf5-4c7b-bae8-af2ba820a47b visibility public
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Fork Workflow > should allow member to fork agents
+orgs.publishMarketplaceAgent: existingMarketplaceAgent null
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Fork Workflow > should allow member to fork agents
+orgs.publishMarketplaceAgent: latest_version_id eb3accf7-afd8-483d-a036-803ff6aa21f4
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Fork Workflow > should allow member to fork agents
+orgs.publishMarketplaceAgent: inserting marketplace agent {
+  id: 'bea6d906-ccf5-4c7b-bae8-af2ba820a47b',
+  org_id: '97d363e6-3c9e-41d5-96fd-0332da678324',
+  name: 'Marketplace Test Agent',
+  slug: 'marketplace-test-agent',
+  description: 'Test agent for marketplace',
+  visibility: 'public',
+  latest_version_id: 'eb3accf7-afd8-483d-a036-803ff6aa21f4'
+}
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Fork Workflow > should allow member to fork agents
+orgs.publishMarketplaceAgent: inserted marketplace agent {
+  id: 'bea6d906-ccf5-4c7b-bae8-af2ba820a47b',
+  org_id: '97d363e6-3c9e-41d5-96fd-0332da678324',
+  name: 'Marketplace Test Agent',
+  slug: 'marketplace-test-agent',
+  description: 'Test agent for marketplace',
+  visibility: 'public',
+  latest_version_id: 'eb3accf7-afd8-483d-a036-803ff6aa21f4',
+  created_at: '2026-06-24T15:03:49.70754+00:00',
+  updated_at: '2026-06-24T15:03:49.70754+00:00'
+}
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Fork Workflow > should allow member to fork agents
+orgs.createOrg: insertPayload {
+  name: 'Target Org 1782313429787',
+  slug: 'target-org-1782313429787',
+  description: 'Target org for install test',
+  owner_id: '9ca67ac1-f6e5-4f32-90e9-deefe85eec0e'
+}
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Fork Workflow > should allow member to fork agents
+orgs.createOrg: organizations insert succeeded {
+  id: '6f18e369-52e9-49bc-ab33-a9d08b373f9e',
+  owner_id: '9ca67ac1-f6e5-4f32-90e9-deefe85eec0e',
+  name: 'Target Org 1782313429787',
+  created_at: '2026-06-24T15:03:49.881864+00:00',
+  slug: 'target-org-1782313429787',
+  description: 'Target org for install test',
+  metadata: {}
+}
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Fork Workflow > should allow member to fork agents
+orgs.createOrg: inserting organization_memberships [
+  {
+    org_id: '6f18e369-52e9-49bc-ab33-a9d08b373f9e',
+    user_id: '9ca67ac1-f6e5-4f32-90e9-deefe85eec0e',
+    role: 'owner'
+  }
+]
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Fork Workflow > should allow member to fork agents
+orgs.createOrg: inserting org_billing [
+  {
+    org_id: '6f18e369-52e9-49bc-ab33-a9d08b373f9e',
+    plan: 'free',
+    tokens_used: 0,
+    runs_used: 0
+  }
+]
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Fork Workflow > should allow member to fork agents
+orgs.createOrg: created organization, membership, and billing records for org 6f18e369-52e9-49bc-ab33-a9d08b373f9e
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Fork Workflow > should allow member to fork agents
+getSourceVersionAndAgent: sourceVersionId eb3accf7-afd8-483d-a036-803ff6aa21f4
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Fork Workflow > should allow member to fork agents
+getSourceVersionAndAgent: sourceVersion found eb3accf7-afd8-483d-a036-803ff6aa21f4 agent_id bea6d906-ccf5-4c7b-bae8-af2ba820a47b
+
+stdout | tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Fork Workflow > should allow member to fork agents
+getSourceVersionAndAgent: sourceAgent found bea6d906-ccf5-4c7b-bae8-af2ba820a47b
+
+ Γ¥» tests/security/marketplace-install-fork.spec.ts (14 tests | 2 failed) 92878ms
+       ├ù should allow member to install into their org 6344ms
+       ├ù should allow member to fork agents 6641ms
+
+ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ» Failed Tests 2 ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»
+
+ FAIL  tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Install Workflow > should allow member to install into their org
+Unknown Error: new row violates row-level security policy for table "marketplace_installs"
+ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»[1/2]ΓÄ»
+
+ FAIL  tests/security/marketplace-install-fork.spec.ts > Marketplace Install/Fork Workflow Security > Fork Workflow > should allow member to fork agents
+Unknown Error: new row violates row-level security policy for table "marketplace_installs"
+ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»[2/2]ΓÄ»
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 12 passed (14)
+   Start at  15:02:43
+   Duration  94.64s (transform 574ms, setup 178ms, import 981ms, tests 92.88s, environment 1ms)
+

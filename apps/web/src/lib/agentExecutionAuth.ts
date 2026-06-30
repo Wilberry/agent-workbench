@@ -99,21 +99,17 @@ export async function authorizeExecution({ user, agentId, conversationId, agentV
 
   let agentVersion = null;
   if (agentVersionId) {
-    const { data: version, error: versionError } = await supabase
-      .from('agent_versions')
-      .select('*')
-      .eq('id', agentVersionId)
-      .single();
+    try {
+      const version = await agents.getVersion(agentVersionId, supabase);
 
-    if (versionError || !version) {
+      if (version.agent_id !== agent.id) {
+        throw new ExecutionAuthorizationError('Agent version does not belong to the requested agent', 400);
+      }
+
+      agentVersion = version;
+    } catch {
       throw new ExecutionAuthorizationError('Agent version not found', 404);
     }
-
-    if (version.agent_id !== agent.id) {
-      throw new ExecutionAuthorizationError('Agent version does not belong to the requested agent', 400);
-    }
-
-    agentVersion = version;
   } else {
     agentVersion = await agents.getLatestVersion(agent.id, supabase);
   }

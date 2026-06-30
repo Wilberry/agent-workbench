@@ -9,6 +9,16 @@ test.describe('Tracing', () => {
     await page.waitForURL('/agents');
 
     await page.goto('/agents');
-    await expect(page.locator('text=Chat with your agent')).toBeVisible();
+    await page.getByRole('link', { name: /create new agent/i }).click();
+
+    const agentName = `E2E Trace Agent ${Date.now()}`;
+    await page.getByPlaceholder('My support agent').fill(agentName);
+    await page.getByPlaceholder('You are a helpful assistant...').fill('E2E prompt verification.');
+    await page.getByPlaceholder('gpt-4o-mini').fill('gpt-4o-mini');
+    await page.getByRole('button', { name: /create agent/i }).click();
+    await page.waitForURL(/\/agents/);
+
+    await page.getByRole('link', { name: agentName }).first().click();
+    await expect(page.getByText('Chat with your agent powered by the configured model.')).toBeVisible();
   });
 });

@@ -43,7 +43,7 @@ function roleDescription(role) {
             return `You act as ${role} within a multi-agent orchestration pipeline.`;
     }
 }
-export async function runMultiAgentWorkflow({ userId, conversationId, message, workflow, memories = [], runId }, modelOverride) {
+export async function runMultiAgentWorkflow({ userId, conversationId, message, workflow, memories = [], systemPrompt, runId }, modelOverride) {
     const agentRoles = workflow && workflow.length > 0 ? workflow : ['Planner', 'Executor', 'Reviewer'];
     const memoryContext = formatMemoryContext(memories);
     const toolsCalled = [];
@@ -55,6 +55,7 @@ export async function runMultiAgentWorkflow({ userId, conversationId, message, w
     let totalLatencyMs = 0;
     let lastModelName;
     const episode = [];
+    const steps = [];
     for (const role of agentRoles) {
         const systemContent = `You are ${role}. ${roleDescription(role)} Use available memory and tools when appropriate.`;
         const rolePrompt = [
@@ -87,7 +88,11 @@ Respond with your assigned role output.`
         const toolCall = parseToolCall(finalOutput);
         if (toolCall) {
             toolsCalled.push(toolCall.name);
+            const toolStart = Date.now();
             const toolResult = await runTool(toolCall.name, toolCall.args, runId);
+            const toolLatency = Date.now() - toolStart;
+            // record a step for the tool invocation
+            steps.push({ name: `tool:${toolCall.name}`, latency: toolLatency, input: toolCall.args, output: toolResult });
             const toolPrompt = [
                 ...rolePrompt,
                 {
@@ -110,8 +115,11 @@ ${JSON.stringify(toolResult, null, 2)}`
             totalLatencyMs += toolResponse.latency_ms;
             lastModelName = toolResponse.model_name;
         }
+        // push a step representing this role's output (use reported latency if available)
+        const roleLatency = agentResponse?.latency_ms ?? undefined;
+        steps.push({ name: `${role}`, latency: roleLatency, input: undefined, output: finalOutput });
         episode.push(`${role.toUpperCase()} OUTPUT:
-${finalOutput}`);
+  ${finalOutput}`);
     }
     return {
         message: episode[episode.length - 1] ?? '',
@@ -125,7 +133,8 @@ ${finalOutput}`);
             completion_tokens: totalCompletionTokens,
             total_tokens: totalTokens,
             estimated_cost: totalEstimatedCost,
-            latency_ms: totalLatencyMs
+            latency_ms: totalLatencyMs,
+            steps
         }
     };
 }

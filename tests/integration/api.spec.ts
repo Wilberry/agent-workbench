@@ -26,7 +26,8 @@ describe('API route integration', () => {
       body: JSON.stringify({})
     });
 
-    const response = await POST(request as any);
+    const authClient = { auth: { getUser: async () => ({ data: { user: { id: 'auth-user' } }, error: null }) } } as any;
+    const response = await POST(request as any, authClient);
     expect(response.status).toBe(400);
   });
 
@@ -46,7 +47,8 @@ describe('API route integration', () => {
       body: JSON.stringify(payload)
     });
 
-    const response = await POST(request as any);
+    const authClient = { auth: { getUser: async () => ({ data: { user: { id: context?.userId ?? 'auth-user' } }, error: null }) } } as any;
+    const response = await POST(request as any, authClient);
     const body = await response.json();
 
     expect(response.status).toBe(202);
@@ -61,7 +63,8 @@ describe('API route integration', () => {
       body: JSON.stringify({ userId: 'x', message: 'no conversationId' })
     });
 
-    const response = await POST(request as any);
+    const authClient = { auth: { getUser: async () => ({ data: { user: { id: 'auth-user' } }, error: null }) } } as any;
+    const response = await POST(request as any, authClient);
     expect(response.status).toBe(400);
   });
 });

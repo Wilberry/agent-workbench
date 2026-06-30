@@ -67,7 +67,7 @@ export default async function AgentPage({ params }: Props) {
                 Edit agent
               </Link>
               <Link
-                href={{ pathname: '/agents/[id]/versions/new', query: { id: agent.id } }}
+                href={`/agents/${agent.id}/versions/new`}
                 className="rounded-2xl border border-slate-700 bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400"
               >
                 Create version

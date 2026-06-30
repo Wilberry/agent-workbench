@@ -403,11 +403,10 @@ async function runAgentForEvaluation(
     throw new Error('Failed to create temporary conversation for evaluation');
   }
 
-  // Dynamically import the runtime at runtime. Use `eval('import(...)')` so
-  // TypeScript does not statically analyze and include the runtime project
-  // into the SDK build (this keeps package boundaries clean).
+  // Dynamically import the runtime at runtime using a runtime-only entry point
+  // so the SDK build does not pull the runtime package into its TypeScript graph.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const runtimeModule: any = await (eval('import("@agent-workbench/agent-runtime")'));
+  const runtimeModule: any = await import(/* webpackIgnore: true */ '@agent-workbench/agent-runtime');
   const runMultiAgentWorkflow = runtimeModule.runMultiAgentWorkflow as (
     input: any,
     model?: string

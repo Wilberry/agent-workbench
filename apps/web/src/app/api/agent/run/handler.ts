@@ -14,7 +14,7 @@ type RunAgentBody = {
   agentVersionId?: string | null;
 };
 
-export async function handleAgentRun(request: NextRequest, authClient = createRouteHandlerSupabaseClient({ headers, cookies })) {
+export async function handleAgentRun(request: NextRequest, authClient?: ReturnType<typeof createRouteHandlerSupabaseClient>) {
   try {
     const body = (await request.json()) as RunAgentBody;
     const { agentId, conversationId, message, workflow, agentVersionId } = body;
@@ -26,9 +26,11 @@ export async function handleAgentRun(request: NextRequest, authClient = createRo
       );
     }
 
+    const resolvedAuthClient = authClient ?? createRouteHandlerSupabaseClient({ headers, cookies });
+
     const {
       data: { user }
-    } = await authClient.auth.getUser();
+    } = await resolvedAuthClient.auth.getUser();
 
     if (!user) {
       return new Response(JSON.stringify({ error: 'Not authenticated' }), { status: 401 });

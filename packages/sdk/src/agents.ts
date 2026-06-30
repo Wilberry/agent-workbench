@@ -233,7 +233,7 @@ export const agents = {
       .from('agent_latest_version')
       .select('*')
       .eq('agent_id', agentId)
-      .single();
+      .maybeSingle();
 
     if (error) throw error;
     return normalizeAgentVersionRow(data) as Database['public']['Views']['agent_latest_versions']['Row'] | null;

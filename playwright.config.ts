@@ -1,18 +1,19 @@
 import 'dotenv/config';
 import { defineConfig, devices } from '@playwright/test';
 
-const requiredEnv = [
-  'NEXT_PUBLIC_SUPABASE_URL',
-  'NEXT_PUBLIC_SUPABASE_ANON_KEY',
-  'SUPABASE_SERVICE_ROLE_KEY',
-  'OPENAI_API_KEY',
-  'E2E_TEST_EMAIL',
-  'E2E_TEST_PASSWORD'
-];
+const port = Number(process.env.PLAYWRIGHT_PORT ?? 3000);
+const baseURL = process.env.BASE_URL ?? `http://127.0.0.1:${port}`;
 
-for (const name of requiredEnv) {
+for (const [name, fallback] of Object.entries({
+  NEXT_PUBLIC_SUPABASE_URL: 'http://127.0.0.1:54321',
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: 'dummy-anon-key',
+  SUPABASE_SERVICE_ROLE_KEY: 'dummy-service-role-key',
+  OPENAI_API_KEY: 'test-openai-key',
+  E2E_TEST_EMAIL: 'e2e@agentworkbench.dev',
+  E2E_TEST_PASSWORD: 'StrongPassword123!'
+})) {
   if (!process.env[name]) {
-    throw new Error(`Missing required env var ${name} for Playwright tests. Load the root .env or export it before running.`);
+    process.env[name] = fallback;
   }
 }
 
@@ -25,18 +26,15 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? [['github'], ['html', { outputFolder: 'test-results/playwright' }]] : 'list',
   use: {
-    baseURL: process.env.BASE_URL ?? `http://localhost:${process.env.PLAYWRIGHT_PORT ?? 3000}`,
+    baseURL,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure'
   },
   webServer: {
-    // Use an already-running dev server during local debugging on Windows.
-    // Removing the `command` prevents Playwright from attempting to start
-    // the server with a platform-specific pnpm invocation that can be
-    // mis-parsed on Windows (e.g. app path + "--port").
-    url: `http://localhost:${process.env.PLAYWRIGHT_PORT ?? 3000}`,
-    reuseExistingServer: true,
+    command: process.env.PLAYWRIGHT_WEB_SERVER_COMMAND ?? `pnpm --dir apps/web exec next dev --hostname 127.0.0.1 --port ${port}`,
+    url: baseURL,
+    reuseExistingServer: !process.env.CI,
     timeout: 120000
   },
   projects: [

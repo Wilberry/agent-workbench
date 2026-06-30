@@ -9,15 +9,15 @@ test.describe('Agents workflow', () => {
     await page.waitForURL('/agents');
 
     await page.goto('/agents');
-    await page.click('text=Create Agent', { strict: false }).catch(() => {});
+    await page.getByRole('link', { name: /create new agent/i }).click();
 
     const name = `E2E Agent ${Date.now()}`;
-    await page.fill('input[name="name"]', name).catch(() => {});
-    await page.fill('textarea[name="system_prompt"]', 'E2E prompt verification.').catch(() => {});
-    await page.selectOption('select[name="model"]', 'gpt-4o-mini').catch(() => {});
-    await page.click('button:has-text("Save")').catch(() => {});
+    await page.getByPlaceholder('My support agent').fill(name);
+    await page.getByPlaceholder('You are a helpful assistant...').fill('E2E prompt verification.');
+    await page.getByPlaceholder('gpt-4o-mini').fill('gpt-4o-mini');
+    await page.getByRole('button', { name: /create agent/i }).click();
 
-    await page.waitForTimeout(1500);
-    await expect(page.locator(`text=${name}`)).toBeVisible();
+    await page.waitForURL(/\/agents/);
+    await expect(page.getByText(name)).toBeVisible();
   });
 });

@@ -80,7 +80,8 @@ describe('Agent API Endpoints - Versioning', () => {
         })
       });
 
-      const response = await POSTRun(request as any);
+      const authClient = { auth: { getUser: async () => ({ data: { user: { id: testUserId } }, error: null }) } } as any;
+      const response = await POSTRun(request as any, authClient);
 
       expect(response.status).toBe(202);
       const data = await response.json();
@@ -101,7 +102,8 @@ describe('Agent API Endpoints - Versioning', () => {
         })
       });
 
-      const response = await POSTRun(request as any);
+      const authClient = { auth: { getUser: async () => ({ data: { user: { id: testUserId } }, error: null }) } } as any;
+      const response = await POSTRun(request as any, authClient);
 
       expect(response.status).toBe(202);
       const data = await response.json();
@@ -120,7 +122,8 @@ describe('Agent API Endpoints - Versioning', () => {
         })
       });
 
-      const response = await POSTRun(request as any);
+      const authClient = { auth: { getUser: async () => ({ data: { user: { id: testUserId } }, error: null }) } } as any;
+      const response = await POSTRun(request as any, authClient);
 
       expect(response.status).toBeGreaterThanOrEqual(400);
     });
@@ -135,7 +138,8 @@ describe('Agent API Endpoints - Versioning', () => {
         })
       });
 
-      const response = await POSTRun(request as any);
+      const authClient = { auth: { getUser: async () => ({ data: { user: { id: testUserId } }, error: null }) } } as any;
+      const response = await POSTRun(request as any, authClient);
 
       expect(response.status).toBe(400);
       const data = await response.json();
@@ -255,7 +259,8 @@ describe('Agent API Endpoints - Versioning', () => {
         })
       });
 
-      const response = await POSTRun(request as any);
+      const authClient = { auth: { getUser: async () => ({ data: { user: { id: testUserId } }, error: null }) } } as any;
+      const response = await POSTRun(request as any, authClient);
 
       expect(response.status).toBe(202);
       const data = await response.json();
