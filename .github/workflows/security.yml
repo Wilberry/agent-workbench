@@ -7,16 +7,20 @@ jobs:
   security:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'pnpm'
-      - uses: pnpm/action-setup@v2
-        with:
-          version: 10
-      - run: pnpm install
+      - run: pnpm install --frozen-lockfile
       - run: pnpm audit --json > audit-results.json
       - run: |
           if grep -q 'moderate\|high\|critical' audit-results.json; then

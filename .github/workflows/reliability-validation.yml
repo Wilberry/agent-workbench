@@ -15,17 +15,18 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
-
-      - name: Setup Node
-        uses: actions/setup-node@v3
-        with:
-          node-version: '20'
+        uses: actions/checkout@v4
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v2
         with:
-          version: 8
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
 
       - name: Install supabase CLI
         run: npm install -g supabase
@@ -59,24 +60,7 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
           NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy
           SUPABASE_SERVICE_ROLE_KEY: postgres
-        run: pnpm test:reliability:ci || true
-
-      - name: Run integration tests
-        env:
-          NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy
-          SUPABASE_SERVICE_ROLE_KEY: postgres
-        run: pnpm test:integration || true
-
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps || true
-
-      - name: Run E2E Playwright tests
-        env:
-          NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy
-          SUPABASE_SERVICE_ROLE_KEY: postgres
-        run: pnpm test:playwright || true
+        run: pnpm test:reliability:ci
 
       - name: Generate DLQ report
         env:

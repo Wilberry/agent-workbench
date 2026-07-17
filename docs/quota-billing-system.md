@@ -250,8 +250,7 @@ GROUP BY billing_month;
 ### Running Tests
 
 ```bash
-pnpm test tests/security/quota-billing.spec.ts
-pnpm test tests/security/quota-api-enforcement.spec.ts
+pnpm test:security
 ```
 
 ## Idempotency

@@ -136,6 +136,12 @@ Testing
 
 All contributions should include appropriate test coverage.
 
+Run the hermetic contributor checks without service credentials:
+
+```bash
+pnpm validate
+```
+
 Unit Tests
 
 pnpm test
@@ -143,6 +149,10 @@ pnpm test
 Integration Tests
 
 pnpm test:integration
+
+Integration, security, and reliability suites require the external environment
+documented in `docs/local-development.md`. `pnpm test:all` runs all Vitest
+suites and is not hermetic.
 
 End-to-End Tests
 

@@ -5,7 +5,7 @@ export default defineConfig({
   ...sharedVitestConfig,
   test: {
     ...sharedVitestConfig.test,
-    include: ['tests/unit/**/*.ts'],
-    setupFiles: './tests/setup.unit.ts',
+    include: ['tests/security/**/*.ts'],
+    setupFiles: './tests/setup.security.ts',
   },
 });

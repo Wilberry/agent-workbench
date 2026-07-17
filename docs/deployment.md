@@ -19,11 +19,13 @@ Operational concerns
 CI/CD
 
 - Use `pnpm build` to verify Next.js builds and typecheck.
-- Run `pnpm test` and `pnpm test:integration` in CI pipelines.
+- Run `pnpm validate` for hermetic lint, type, build, and unit-test coverage.
+- Run `pnpm test:integration`, `pnpm test:security`, and
+  `pnpm test:reliability` in separate jobs configured with their required
+  external credentials. `pnpm test:all` is not hermetic.
 - Deploy tags/releases via GitHub Actions and create release notes for each tag.
 
 Security
 
 - Never embed `SUPABASE_SERVICE_ROLE_KEY` in client bundles.
 - Restrict access to service role keys and rotate periodically.
-
