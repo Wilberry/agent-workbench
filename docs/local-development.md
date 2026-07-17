@@ -55,15 +55,43 @@ pnpm install
 pnpm dev
 ```
 
-3. Run tests:
+3. Run hermetic unit tests (no `.env` or Supabase instance is required):
 
 ```bash
+pnpm validate
+pnpm test
 pnpm test:unit
+```
+
+`pnpm validate` runs lint, type checking, the production build, and unit tests.
+It requires no Supabase or OpenAI credentials. `pnpm test` is an explicit alias
+for the hermetic unit suite.
+
+4. Run suites backed by a real Supabase instance after configuring the environment:
+
+```bash
 pnpm test:integration
 pnpm test:security
 pnpm test:reliability
 pnpm test:playwright
 ```
+
+Integration and reliability tests require `NEXT_PUBLIC_SUPABASE_URL` and
+`SUPABASE_SERVICE_ROLE_KEY`. Security tests additionally require
+`NEXT_PUBLIC_SUPABASE_ANON_KEY`. These suites reject `USE_MOCK_SUPABASE=true`
+so security and database behavior cannot accidentally be validated against an
+in-memory mock. Playwright validates its additional credentials when its
+configuration loads.
+
+External Vitest suites load `.env.local` first and then `.env` as a fallback;
+neither file overrides variables exported by the shell or CI. Provider mocking
+is never enabled automatically. Set `USE_MOCK_OPENAI=true` explicitly to use
+the mock adapter. Tests that opt into the live OpenAI provider require
+`OPENAI_API_KEY`; suites that do not exercise it do not.
+
+`pnpm test:all` runs unit, integration, security, and reliability suites. It is
+not hermetic and must only be used in an environment configured for all of
+those external suites.
 
 ## Local Supabase development (optional)
 
@@ -119,6 +147,8 @@ If you are using a hosted Supabase instance instead of local development, ensure
 - Install dependencies: `pnpm install`
 - Start app: `pnpm dev`
 - Run unit tests: `pnpm test:unit`
+- Run hermetic contributor validation: `pnpm validate`
+- Run all Vitest suites: `pnpm test:all` (requires external credentials)
 - Run integration tests: `pnpm test:integration`
 - Run security tests: `pnpm test:security`
 - Run reliability tests: `pnpm test:reliability`

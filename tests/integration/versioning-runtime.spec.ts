@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { createServerSupabaseClient, agents, agentRuns } from '@agent-workbench/sdk';
 import { enqueueAgentRun, processAgentRunJob } from '@agent-workbench/agent-runtime';
 import { createTestAuthUser } from '../utils/createTestAuthUser';
+import { requireExternalTestEnvironment } from '../setup.external';
 
 describe('Versioning Integration with Runtime', () => {
   let testAgentId: string;
@@ -149,6 +150,12 @@ describe('Versioning Integration with Runtime', () => {
     });
 
     it('should execute the pinned agent version workflow even when a newer workflow exists in queue', async () => {
+      requireExternalTestEnvironment({
+        suiteName: 'Pinned workflow integration test',
+        requiredSupabaseVariables: [],
+        requireOpenAI: true
+      });
+
       const originalVersion = await agents.createVersion(testAgentId, testUserId, {
         system_prompt: 'Pinned version prompt',
         model: 'gpt-4',

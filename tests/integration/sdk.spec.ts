@@ -3,6 +3,7 @@ import { agentRuns, createServerSupabaseClient, orgs } from '@agent-workbench/sd
 import { createTestRun } from '../utils/createTestRun';
 import { cleanupRuns } from '../utils/cleanupRuns';
 import { processAgentRunJob } from '@agent-workbench/agent-runtime';
+import { requireExternalTestEnvironment } from '../setup.external';
 
 let context: Awaited<ReturnType<typeof createTestRun>> | null = null;
 
@@ -25,6 +26,12 @@ describe('SDK integration', () => {
   });
 
   it('replays a completed run through SDK', async () => {
+    requireExternalTestEnvironment({
+      suiteName: 'SDK replay integration test',
+      requiredSupabaseVariables: [],
+      requireOpenAI: true
+    });
+
     const job = {
       runId: context!.runId,
       userId: context!.userId,

@@ -2,7 +2,6 @@ name: E2E Test Suite
 
 on:
   workflow_dispatch:
-  pull_request:
   push:
     branches: [main]
 
@@ -15,6 +14,8 @@ jobs:
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL }}
+      E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
       BASE_URL: 'http://localhost:3000'
     steps:
       - uses: actions/checkout@v4
@@ -25,7 +26,7 @@ jobs:
         with:
           node-version: '22'
           cache: 'pnpm'
-      - run: pnpm install
+      - run: pnpm install --frozen-lockfile
       - run: pnpm playwright install --with-deps
       - run: pnpm test:playwright
       - uses: actions/upload-artifact@v4
