@@ -8,7 +8,7 @@ interface AgentVersionComparisonProps {
   agentId: string;
 }
 
-type VersionField = 'model' | 'system_prompt' | 'tools' | 'workflow' | 'metadata';
+type VersionField = 'provider' | 'model' | 'system_prompt' | 'tools' | 'workflow' | 'metadata';
 
 interface DiffField {
   field: VersionField;
@@ -17,7 +17,12 @@ interface DiffField {
   v2: any;
 }
 
+function normalizeProvider(provider?: string | null) {
+  return provider?.trim().toLowerCase() || 'openai';
+}
+
 export default function AgentVersionComparison({ versions, agentId }: AgentVersionComparisonProps) {
+  void agentId;
   const [v1Id, setV1Id] = useState<string | null>(versions[0]?.id ?? null);
   const [v2Id, setV2Id] = useState<string | null>(versions[1]?.id ?? null);
 
@@ -27,7 +32,15 @@ export default function AgentVersionComparison({ versions, agentId }: AgentVersi
   const diffs = useMemo(() => {
     if (!v1 || !v2) return [];
 
+    const v1Provider = normalizeProvider(v1.provider);
+    const v2Provider = normalizeProvider(v2.provider);
     const fields: DiffField[] = [
+      {
+        field: 'provider',
+        changed: v1Provider !== v2Provider,
+        v1: v1Provider,
+        v2: v2Provider
+      },
       {
         field: 'model',
         changed: v1.model !== v2.model,
@@ -75,7 +88,6 @@ export default function AgentVersionComparison({ versions, agentId }: AgentVersi
 
   return (
     <div className="space-y-6">
-      {/* Version selector */}
       <div className="rounded-3xl border border-slate-700 bg-slate-900 p-6">
         <h3 className="mb-4 text-lg font-semibold text-slate-100">Version Comparison</h3>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -88,7 +100,7 @@ export default function AgentVersionComparison({ versions, agentId }: AgentVersi
             >
               {versions.map((v) => (
                 <option key={v.id} value={v.id}>
-                  {v.version} (v{v.version_number})
+                  {v.version} (v{v.version_number}) · {normalizeProvider(v.provider)}/{v.model}
                 </option>
               ))}
             </select>
@@ -103,7 +115,7 @@ export default function AgentVersionComparison({ versions, agentId }: AgentVersi
             >
               {versions.map((v) => (
                 <option key={v.id} value={v.id}>
-                  {v.version} (v{v.version_number})
+                  {v.version} (v{v.version_number}) · {normalizeProvider(v.provider)}/{v.model}
                 </option>
               ))}
             </select>
@@ -123,7 +135,6 @@ export default function AgentVersionComparison({ versions, agentId }: AgentVersi
         )}
       </div>
 
-      {/* Comparison details */}
       {v1 && v2 && (
         <div className="space-y-4">
           {diffs.map((diff) => (
