@@ -55,18 +55,18 @@ DECLARE
   claimed_id uuid;
 BEGIN
   WITH next_job AS (
-    SELECT public.evaluation_run_jobs.id
-    FROM public.evaluation_run_jobs
-    WHERE status = 'pending'
-    ORDER BY created_at ASC
+    SELECT job.id
+    FROM public.evaluation_run_jobs AS job
+    WHERE job.status = 'pending'
+    ORDER BY job.created_at ASC
     FOR UPDATE SKIP LOCKED
     LIMIT 1
   )
-  UPDATE public.evaluation_run_jobs
+  UPDATE public.evaluation_run_jobs AS job
   SET status = 'running', locked_at = NOW(), updated_at = NOW()
   FROM next_job
-  WHERE public.evaluation_run_jobs.id = next_job.id
-  RETURNING public.evaluation_run_jobs.id INTO claimed_id;
+  WHERE job.id = next_job.id
+  RETURNING job.id INTO claimed_id;
 
   IF claimed_id IS NULL THEN
     RETURN;
@@ -99,17 +99,17 @@ DECLARE
   rec RECORD;
 BEGIN
   FOR rec IN
-    SELECT public.evaluation_run_jobs.id
-    FROM public.evaluation_run_jobs
-    WHERE status = 'running'
-      AND locked_at IS NOT NULL
-      AND locked_at < NOW() - lease_interval
-      AND attempts < max_attempts
+    SELECT job.id
+    FROM public.evaluation_run_jobs AS job
+    WHERE job.status = 'running'
+      AND job.locked_at IS NOT NULL
+      AND job.locked_at < NOW() - lease_interval
+      AND job.attempts < job.max_attempts
     FOR UPDATE SKIP LOCKED
   LOOP
-    UPDATE public.evaluation_run_jobs
+    UPDATE public.evaluation_run_jobs AS job
     SET status = 'pending', locked_at = NULL, updated_at = NOW()
-    WHERE public.evaluation_run_jobs.id = rec.id;
+    WHERE job.id = rec.id;
 
     RETURN NEXT rec.id;
   END LOOP;
