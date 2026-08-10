@@ -129,6 +129,7 @@ describe('Anthropic provider', () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({
       ok: false,
       status: 429,
+      headers: new Headers({ 'retry-after': '1', 'request-id': 'req_test' }),
       text: async () => '{"type":"error","error":{"type":"rate_limit_error"}}'
     })));
 
@@ -136,7 +137,8 @@ describe('Anthropic provider', () => {
       chatCompletion({
         provider: 'anthropic',
         model: 'claude-sonnet-4-6',
-        messages: [{ role: 'user', content: 'Hello' }]
+        messages: [{ role: 'user', content: 'Hello' }],
+        max_retries: 0
       })
     ).rejects.toThrow('Anthropic request failed: 429');
   });
