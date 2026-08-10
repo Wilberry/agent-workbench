@@ -116,6 +116,20 @@ describe('queued evaluation cancellation', () => {
     expect(second.id).toBe(first.id);
   });
 
+  it('rejects cross-user experiment creation against protected resources', async () => {
+    const { dataset } = await createExperimentFixture();
+
+    await expect(
+      experiments.createExperiment(outsiderUserId!, {
+        name: 'unauthorized-experiment',
+        agentId: context!.agentId,
+        versionAId: context!.versionId,
+        versionBId: context!.versionId,
+        datasetId: dataset.id
+      }, supabase)
+    ).rejects.toThrow('Not authorized to use this evaluation dataset');
+  });
+
   it('rejects cross-user experiment execution and cancellation', async () => {
     const { experiment } = await createExperimentFixture();
 
