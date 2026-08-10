@@ -4,6 +4,7 @@ import {
   evaluations,
   experiments
 } from '@agent-workbench/sdk';
+import { isProviderRequestError } from './llm/http';
 
 export type EvaluationRunQueueJob = {
   id: string;
@@ -186,6 +187,23 @@ async function markEvaluationQueueJobCancelled(runId: string): Promise<void> {
   if (error) throw error;
 }
 
+async function markEvaluationQueueJobFailed(runId: string, failureReason: string): Promise<void> {
+  const supabase = createServerSupabaseClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const queueClient = supabase as any;
+  const { error } = await queueClient
+    .from('evaluation_run_jobs')
+    .update({
+      status: 'failed',
+      locked_at: null,
+      error_message: failureReason,
+      updated_at: new Date().toISOString()
+    })
+    .eq('evaluation_run_id', runId)
+    .neq('status', 'cancelled');
+  if (error) throw error;
+}
+
 async function incrementEvaluationAttempts(
   runId: string,
   failureReason: string
@@ -247,6 +265,28 @@ export async function processEvaluationRunJob(job: EvaluationRunQueueJob): Promi
       await markEvaluationQueueJobCancelled(job.runId);
       await experiments.syncExperimentStatusForRun(job.runId, supabase);
       return;
+    }
+
+    if (isProviderRequestError(error) && !error.retryable) {
+      try {
+        const latestRun = await evaluations.getEvaluationRun(job.runId, supabase);
+        if (latestRun.status === 'cancelled') {
+          await markEvaluationQueueJobCancelled(job.runId);
+          await experiments.syncExperimentStatusForRun(job.runId, supabase);
+          return;
+        }
+
+        await markEvaluationQueueJobFailed(job.runId, errorMessage);
+        await evaluations.markEvaluationRunFailed(
+          job.runId,
+          `Non-retryable provider failure: ${errorMessage}`,
+          supabase
+        );
+        await experiments.syncExperimentStatusForRun(job.runId, supabase);
+      } catch (queueError) {
+        console.warn('Failed to mark non-retryable evaluation provider failure terminal:', queueError);
+      }
+      throw error;
     }
 
     try {
