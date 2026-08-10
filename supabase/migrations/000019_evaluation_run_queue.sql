@@ -111,7 +111,8 @@ BEGIN
     SET status = 'pending', locked_at = NULL, updated_at = NOW()
     WHERE job.id = rec.id;
 
-    RETURN NEXT rec.id;
+    id := rec.id;
+    RETURN NEXT;
   END LOOP;
 
   RETURN;
