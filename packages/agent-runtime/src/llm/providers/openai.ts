@@ -11,6 +11,7 @@ import { getPricingProvider } from '../pricing';
 import { requestWithProviderReliability } from '../http';
 import { streamProviderResponseWithReliability } from '../httpStream';
 import { SSEDataParser } from '../sse';
+import { LLMStreamProtocolError } from '../stream';
 import { normalizeToolCall } from '../tooling';
 
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
@@ -187,15 +188,29 @@ export const openaiProvider: LLMProvider = {
     const tools = new Map<number, OpenAIToolAccumulator>();
     const start = Date.now();
     let started = false;
+    let terminalReceived = false;
     let content = '';
     let modelName = request.model;
     let usage: LLMUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
     let stopReason: LLMResponse['stop_reason'];
 
     const processPayload = function* (payloadText: string): Generator<LLMStreamEvent> {
-      if (!payloadText || payloadText === '[DONE]') return;
+      if (!payloadText) return;
+      if (payloadText === '[DONE]') {
+        terminalReceived = true;
+        return;
+      }
 
       const payload = JSON.parse(payloadText);
+      if (payload?.error) {
+        throw new LLMStreamProtocolError(
+          'openai',
+          typeof payload.error?.message === 'string'
+            ? payload.error.message
+            : 'provider emitted an error event'
+        );
+      }
+
       modelName = typeof payload?.model === 'string' ? payload.model : modelName;
 
       if (!started) {
@@ -282,6 +297,10 @@ export const openaiProvider: LLMProvider = {
 
     for (const payloadText of parser.finish()) {
       yield* processPayload(payloadText);
+    }
+
+    if (!terminalReceived) {
+      throw new LLMStreamProtocolError('openai', 'stream ended before [DONE]');
     }
 
     if (!started) {
