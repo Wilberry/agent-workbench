@@ -1,6 +1,7 @@
-import { runTool } from './tools';
 import { chatCompletion } from './llm/client';
-import type { LLMResponse } from './llm/types';
+import type { LLMMessage, LLMResponse, LLMToolDefinition } from './llm/types';
+import { getBuiltInToolDefinitions } from './tools';
+import { executeLLMToolLoop } from './toolExecution';
 
 export type ExecutionTrace = {
   memoryUsed: boolean;
@@ -31,6 +32,8 @@ type AgentWorkflowInput = {
   memories?: MemorySnippet[];
   systemPrompt?: string;
   runId?: string;
+  organizationId?: string | null;
+  tools?: LLMToolDefinition[];
 };
 
 export type AgentWorkflowResult = {
@@ -71,21 +74,6 @@ function formatMemoryContext(memories: MemorySnippet[] = []) {
     .join('\n');
 }
 
-function parseToolCall(text: string) {
-  const match = text.match(/TOOL_CALL:\s*({[\s\S]*})/);
-  if (!match) return null;
-
-  try {
-    const parsed = JSON.parse(match[1]);
-    if (typeof parsed.name !== 'string' || typeof parsed.args !== 'object' || parsed.args === null) {
-      return null;
-    }
-    return parsed as { name: string; args: Record<string, unknown> };
-  } catch {
-    return null;
-  }
-}
-
 function roleDescription(role: string) {
   switch (role.toLowerCase()) {
     case 'planner':
@@ -100,12 +88,23 @@ function roleDescription(role: string) {
 }
 
 export async function runMultiAgentWorkflow(
-  { userId, conversationId, message, workflow, memories = [], systemPrompt, runId }: AgentWorkflowInput,
+  {
+    userId: _userId,
+    conversationId: _conversationId,
+    message,
+    workflow,
+    memories = [],
+    systemPrompt,
+    runId,
+    organizationId,
+    tools
+  }: AgentWorkflowInput,
   modelOverride?: string,
   providerOverride = 'openai'
 ): Promise<AgentWorkflowResult> {
   const agentRoles = workflow && workflow.length > 0 ? workflow : ['Planner', 'Executor', 'Reviewer'];
   const memoryContext = formatMemoryContext(memories);
+  const availableTools = tools ?? getBuiltInToolDefinitions();
   const toolsCalled: string[] = [];
   let modelIterations = 0;
   let totalPromptTokens = 0;
@@ -120,7 +119,7 @@ export async function runMultiAgentWorkflow(
 
   for (const role of agentRoles) {
     const systemContent = `You are ${role}. ${roleDescription(role)} Use available memory and tools when appropriate.`;
-    const rolePrompt = [
+    const rolePrompt: LLMMessage[] = [
       {
         role: 'system',
         content: systemPrompt ? `${systemPrompt}\n\n${systemContent}` : systemContent
@@ -131,51 +130,41 @@ export async function runMultiAgentWorkflow(
       }
     ];
 
-    const agentResponse = await callLLM(rolePrompt, modelOverride ?? 'gpt-4o-mini', providerOverride);
-    modelIterations += 1;
-    let finalOutput = agentResponse.content;
-    totalPromptTokens += agentResponse.prompt_tokens;
-    totalCompletionTokens += agentResponse.completion_tokens;
-    totalTokens += agentResponse.total_tokens;
-    totalEstimatedCost += agentResponse.estimated_cost;
-    totalLatencyMs += agentResponse.latency_ms;
-    lastProviderName = agentResponse.provider_name;
-    lastModelName = agentResponse.model_name;
+    const roleResult = await executeLLMToolLoop({
+      provider: providerOverride,
+      model: modelOverride ?? 'gpt-4o-mini',
+      messages: rolePrompt,
+      tools: availableTools,
+      runId,
+      organizationId,
+      maxToolRounds: 2,
+      onToolExecuted(record) {
+        steps.push({
+          name: `tool:${record.call.name}`,
+          latency: record.latency_ms,
+          input: record.call.arguments,
+          output: record.result
+        });
+      }
+    });
 
-    const toolCall = parseToolCall(finalOutput);
-    if (toolCall) {
-      toolsCalled.push(toolCall.name);
-      const toolStart = Date.now();
-      const toolResult = await runTool(toolCall.name, toolCall.args, runId);
-      const toolLatency = Date.now() - toolStart;
-      steps.push({ name: `tool:${toolCall.name}`, latency: toolLatency, input: toolCall.args, output: toolResult });
+    const finalOutput = roleResult.content;
+    toolsCalled.push(...roleResult.toolsCalled);
+    modelIterations += roleResult.modelIterations;
+    totalPromptTokens += roleResult.prompt_tokens;
+    totalCompletionTokens += roleResult.completion_tokens;
+    totalTokens += roleResult.total_tokens;
+    totalEstimatedCost += roleResult.estimated_cost;
+    totalLatencyMs += roleResult.latency_ms;
+    lastProviderName = roleResult.provider_name ?? lastProviderName;
+    lastModelName = roleResult.model_name ?? lastModelName;
 
-      const toolPrompt = [
-        ...rolePrompt,
-        {
-          role: 'system',
-          content: `Tool ${toolCall.name} executed. Result:\n${JSON.stringify(toolResult, null, 2)}`
-        },
-        {
-          role: 'user',
-          content: 'Use the tool result to continue your role output and complete the task.'
-        }
-      ];
-
-      const toolResponse = await callLLM(toolPrompt, modelOverride ?? 'gpt-4o-mini', providerOverride);
-      finalOutput = toolResponse.content;
-      modelIterations += 1;
-      totalPromptTokens += toolResponse.prompt_tokens;
-      totalCompletionTokens += toolResponse.completion_tokens;
-      totalTokens += toolResponse.total_tokens;
-      totalEstimatedCost += toolResponse.estimated_cost;
-      totalLatencyMs += toolResponse.latency_ms;
-      lastProviderName = toolResponse.provider_name;
-      lastModelName = toolResponse.model_name;
-    }
-
-    const roleLatency = (agentResponse?.latency_ms as number | undefined) ?? undefined;
-    steps.push({ name: `${role}`, latency: roleLatency, input: undefined, output: finalOutput });
+    steps.push({
+      name: role,
+      latency: roleResult.latency_ms,
+      input: undefined,
+      output: finalOutput
+    });
 
     episode.push(`${role.toUpperCase()} OUTPUT:\n  ${finalOutput}`);
   }
