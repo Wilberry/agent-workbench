@@ -27,10 +27,9 @@ export function registerLLMProvider(registration: LLMProviderRegistration): void
     throw new Error(`LLM provider is already registered: ${name}`);
   }
 
-  registry.set(name, {
-    ...registration,
-    provider: { ...registration.provider, name }
-  });
+  // Keep the adapter object intact so class/prototype-based providers remain
+  // usable; the normalized map key is the canonical provider identifier.
+  registry.set(name, registration);
 }
 
 export function getLLMProviderRegistration(provider?: string | null): LLMProviderRegistration | null {
