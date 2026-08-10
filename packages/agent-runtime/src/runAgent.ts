@@ -195,6 +195,7 @@ export async function runAgent({
       });
       const result = await runMultiAgentWorkflow({
         userId,
+        agentId,
         conversationId,
         message: userMessage,
         workflow: versionWorkflow,
@@ -252,6 +253,8 @@ export async function runAgent({
       runId,
       organizationId: agent.organization_id,
       ownerUserId,
+      agentId,
+      conversationId,
       maxToolRounds: 2,
       onToolExecuted(record) {
         void persistEvent('tool_call', {
