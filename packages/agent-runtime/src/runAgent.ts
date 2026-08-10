@@ -12,6 +12,7 @@ export type ExecutionTrace = {
   memoryUsed: boolean;
   toolsCalled: string[];
   modelIterations: number;
+  provider_name?: string;
   model_name?: string;
   prompt_tokens?: number;
   completion_tokens?: number;
@@ -80,6 +81,10 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function normalizeProviderName(provider?: string | null): string {
+  return provider?.trim().toLowerCase() || 'openai';
+}
+
 export async function runAgent({
   agentId,
   conversationId,
@@ -136,12 +141,18 @@ export async function runAgent({
 
   let selectedSystemPrompt = agent.system_prompt;
   let selectedModel = agent.model ?? 'gpt-4o-mini';
+  let selectedProvider = normalizeProviderName(agent.provider);
   let versionWorkflow: string[] | undefined = undefined;
 
   if (latestVersion) {
     if (latestVersion.system_prompt) selectedSystemPrompt = latestVersion.system_prompt;
+    if (latestVersion.model) selectedModel = latestVersion.model;
+    if (latestVersion.provider) selectedProvider = normalizeProviderName(latestVersion.provider);
     if (latestVersion.metadata && typeof latestVersion.metadata.model === 'string') {
       selectedModel = latestVersion.metadata.model;
+    }
+    if (latestVersion.metadata && typeof latestVersion.metadata.provider === 'string') {
+      selectedProvider = normalizeProviderName(latestVersion.metadata.provider);
     }
     if (Array.isArray(latestVersion.workflow) && latestVersion.workflow.length > 0) {
       versionWorkflow = latestVersion.workflow;
@@ -163,6 +174,7 @@ export async function runAgent({
   let totalTokens = 0;
   let totalEstimatedCost = 0;
   let totalLatencyMs = 0;
+  let lastProviderName: string | undefined;
   let lastModelName: string | undefined;
   let workflowFailed = false;
   let fallbackReason: string | undefined;
@@ -171,7 +183,12 @@ export async function runAgent({
     const { data: userInfo } = await supabase.auth.getUser();
     const userId = userInfo?.user?.id ?? '';
     try {
-      void persistEvent('run_started', { workflow: versionWorkflow, message: userMessage });
+      void persistEvent('run_started', {
+        workflow: versionWorkflow,
+        message: userMessage,
+        provider: selectedProvider,
+        model: selectedModel
+      });
       const result = await runMultiAgentWorkflow({
         userId,
         conversationId,
@@ -179,10 +196,14 @@ export async function runAgent({
         workflow: versionWorkflow,
         memories,
         runId
-      }, selectedModel);
+      }, selectedModel, selectedProvider);
 
       finalAssistantResponse = result.message;
-      void persistEvent('run_completed', { model_name: result.trace.model_name, trace: result.trace });
+      void persistEvent('run_completed', {
+        provider_name: result.trace.provider_name,
+        model_name: result.trace.model_name,
+        trace: result.trace
+      });
       toolsCalled.push(...(result.trace.toolsCalled || []));
       modelIterations = result.trace.modelIterations || modelIterations;
       totalPromptTokens = result.trace.prompt_tokens ?? totalPromptTokens;
@@ -190,6 +211,7 @@ export async function runAgent({
       totalTokens = result.trace.total_tokens ?? totalTokens;
       totalEstimatedCost = result.trace.estimated_cost ?? totalEstimatedCost;
       totalLatencyMs = result.trace.latency_ms ?? totalLatencyMs;
+      lastProviderName = result.trace.provider_name ?? lastProviderName;
       lastModelName = result.trace.model_name ?? lastModelName;
     } catch (err) {
       workflowFailed = true;
@@ -197,6 +219,8 @@ export async function runAgent({
       console.error('Multi-agent workflow failed, falling back to single-agent:', err);
       void persistEvent('workflow_failed', {
         workflow: versionWorkflow,
+        provider: selectedProvider,
+        model: selectedModel,
         error: fallbackReason,
         fallback: 'single-agent'
       });
@@ -208,11 +232,14 @@ export async function runAgent({
     void persistEvent('run_started', {
       workflow: ['single-agent'],
       message: userMessage,
+      provider: selectedProvider,
+      model: selectedModel,
       fallback: workflowFailed
     });
     for (let iteration = 0; iteration < 3; iteration += 1) {
       modelIterations += 1;
       const assistantResult = await chatCompletion({
+        provider: selectedProvider,
         model: selectedModel,
         messages: currentMessages,
         temperature: 0.7,
@@ -223,6 +250,7 @@ export async function runAgent({
       totalTokens += assistantResult.total_tokens;
       totalEstimatedCost += assistantResult.estimated_cost;
       totalLatencyMs += assistantResult.latency_ms;
+      lastProviderName = assistantResult.provider_name;
       lastModelName = assistantResult.model_name;
 
       const assistantResponse = assistantResult.content;
@@ -253,6 +281,7 @@ export async function runAgent({
     memoryUsed: memories.length > 0,
     toolsCalled,
     modelIterations,
+    provider_name: lastProviderName,
     model_name: lastModelName,
     prompt_tokens: totalPromptTokens,
     completion_tokens: totalCompletionTokens,
@@ -270,7 +299,8 @@ export async function runAgent({
       total_tokens: totalTokens,
       estimated_cost: totalEstimatedCost,
       latency_ms: totalLatencyMs,
-      model_name: lastModelName ?? null
+      provider_name: lastProviderName ?? selectedProvider,
+      model_name: lastModelName ?? selectedModel
     });
   }
 
