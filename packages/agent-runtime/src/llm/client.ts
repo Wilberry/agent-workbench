@@ -39,7 +39,7 @@ function getProvider(provider?: string): LLMProvider {
   if (missingEnv.length > 0) {
     if (name === 'openai' && missingEnv.includes('OPENAI_API_KEY')) {
       throw new LLMConfigurationError(
-        'OPENAI_API_KEY is required for OpenAI provider. Set USE_MOCK_OPENAI=true only for explicit test environments.'
+        'OPENAI_API_KEY is required for the OpenAI provider unless USE_MOCK_OPENAI=true is explicitly set.'
       );
     }
 
@@ -53,8 +53,13 @@ function getProvider(provider?: string): LLMProvider {
 
 export async function chatCompletion(request: LLMRequest): Promise<LLMResponse> {
   const provider = getProvider(request.provider);
-  return provider.chatCompletion({
+  const response = await provider.chatCompletion({
     ...request,
     provider: normalizeProviderName(request.provider)
   });
+
+  return {
+    ...response,
+    provider_name: response.provider_name ?? normalizeProviderName(provider.name)
+  };
 }
