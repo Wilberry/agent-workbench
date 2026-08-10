@@ -1,4 +1,5 @@
 import type { LLMProvider } from './types';
+import { anthropicProvider } from './providers/anthropic';
 import { openaiProvider } from './providers/openai';
 import { mockProvider } from './providers/mock';
 
@@ -51,6 +52,11 @@ export function listLLMProviders(options?: { includeInternal?: boolean }): LLMPr
     })
     .sort((a, b) => a.name.localeCompare(b.name));
 }
+
+registerLLMProvider({
+  provider: anthropicProvider,
+  requiredEnv: ['ANTHROPIC_API_KEY']
+});
 
 registerLLMProvider({
   provider: openaiProvider,
