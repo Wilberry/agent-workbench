@@ -9,6 +9,8 @@ export type LLMRequest = {
   temperature?: number;
   max_tokens?: number;
   provider?: string;
+  timeout_ms?: number;
+  max_retries?: number;
 };
 
 export type LLMUsage = {
