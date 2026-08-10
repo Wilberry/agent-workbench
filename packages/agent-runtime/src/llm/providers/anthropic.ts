@@ -230,7 +230,8 @@ export const anthropicProvider: LLMProvider = {
       requestInit(apiKey, request),
       {
         timeoutMs: request.timeout_ms,
-        maxRetries: request.max_retries
+        maxRetries: request.max_retries,
+        signal: request.signal
       }
     );
     const latency_ms = Date.now() - start;
@@ -415,7 +416,8 @@ export const anthropicProvider: LLMProvider = {
       requestInit(apiKey, request, true),
       {
         timeoutMs: request.timeout_ms,
-        maxRetries: request.max_retries
+        maxRetries: request.max_retries,
+        signal: request.signal
       }
     )) {
       for (const payloadText of parser.push(chunk)) {
