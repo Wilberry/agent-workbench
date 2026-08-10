@@ -5,6 +5,7 @@ export type Agent = {
   description: string | null;
   system_prompt: string;
   model: string;
+  provider: string;
   created_at: string;
 };
 
@@ -33,6 +34,7 @@ export type AgentVersion = {
   description: string | null;
   system_prompt: string;
   model: string;
+  provider: string;
   workflow: string[];
   tools: Record<string, unknown>[];
   metadata: Record<string, unknown>;
@@ -186,6 +188,7 @@ export type AgentRun = {
   estimated_cost?: number;
   latency_ms?: number;
   model_name?: string | null;
+  provider_name?: string | null;
 };
 
 type SupabaseTable<Row> = {
@@ -219,6 +222,7 @@ export type Database = {
         description: string | null;
         system_prompt: string;
         model: string;
+        provider: string;
         created_at: string;
       }>;
       conversations: SupabaseTable<{
@@ -303,6 +307,7 @@ export type Database = {
         estimated_cost: number;
         latency_ms: number;
         model_name?: string | null;
+        provider_name?: string | null;
         organization_id?: string | null;
         agent_version_id?: string | null;
         replay_of_run_id?: string | null;
@@ -356,6 +361,7 @@ export type Database = {
         tools: Record<string, unknown>[];
         metadata: Record<string, unknown>;
         model: string;
+        provider: string;
         version_number: number;
         created_by: string | null;
         created_at: string;
@@ -461,6 +467,7 @@ export type Database = {
           tools: Record<string, unknown>[];
           metadata: Record<string, unknown>;
           model: string;
+          provider: string;
           version_number: number;
           created_by: string | null;
           created_at: string;
