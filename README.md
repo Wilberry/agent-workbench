@@ -31,7 +31,7 @@ Agent Workbench is a production-oriented pre-release platform. The backend archi
 ### Beta / stabilization
 
 - OpenAI is the only live LLM provider currently registered; a mock provider is available for explicit test use
-- Cost estimates are based on a local pricing catalog; unknown model pricing is represented as unknown rather than silently treated as free
+- Cost estimates are based on a local pricing catalog; unknown models now raise an explicit pricing error instead of being reported as free
 - Multi-agent workflow failures may fall back to the single-agent runtime, with fallback state recorded in execution traces
 - Evaluation and experiment execution is currently synchronous and is the next major architecture target
 - The current tool loop uses a structured text protocol rather than provider-native tool/function calling
@@ -157,10 +157,10 @@ The original phase-based roadmap has been retired because the repository has out
 ### v0.5 — Runtime Stabilization
 
 - [x] Hermetic default validation
-- [ ] Strict provider selection and configuration behavior
-- [ ] Explicit unknown-cost semantics
-- [ ] Observable workflow fallback behavior
-- [ ] Truthful capability and release documentation
+- [x] Strict provider selection and configuration behavior
+- [x] Explicit unknown-cost semantics
+- [x] Observable workflow fallback behavior
+- [x] Truthful capability and release documentation
 - [ ] Security validation integrated into the appropriate protected-branch lifecycle
 
 ### v0.6 — Async Evaluations
