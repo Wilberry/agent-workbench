@@ -19,6 +19,7 @@ export type LLMUsage = {
 
 export type LLMResponse = {
   content: string;
+  provider_name: string;
   model_name: string;
   prompt_tokens: number;
   completion_tokens: number;
