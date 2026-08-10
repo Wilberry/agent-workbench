@@ -7,6 +7,19 @@ function normalizeProviderName(provider?: string | null) {
   return provider?.trim().toLowerCase() || 'openai';
 }
 
+function resolveCreateModel(provider: string, model?: string) {
+  const normalizedModel = model?.trim();
+  if (normalizedModel) return normalizedModel;
+  if (provider === 'openai') return 'gpt-4o-mini';
+  throw new Error(`model is required when creating an agent with provider: ${provider}`);
+}
+
+function assertProviderUpdateIncludesModel(provider: string | undefined, model: string | undefined) {
+  if (provider !== undefined && !model?.trim()) {
+    throw new Error('model must be provided when provider is updated');
+  }
+}
+
 function normalizeAgentVersionRow(row: any, fallbackModel = 'gpt-4o-mini', fallbackProvider = 'openai') {
   return {
     ...row,
@@ -23,6 +36,8 @@ export const agents = {
     client?: SupabaseClient<Database>
   ) {
     const supabase = client ?? createServerSupabaseClient();
+    const provider = normalizeProviderName(payload.provider);
+    const model = resolveCreateModel(provider, payload.model);
     const insertPayload = [
       {
         user_id: userId,
@@ -30,8 +45,8 @@ export const agents = {
         name: payload.name,
         description: payload.description ?? null,
         system_prompt: payload.system_prompt,
-        model: payload.model ?? 'gpt-4o-mini',
-        provider: normalizeProviderName(payload.provider)
+        model,
+        provider
       }
     ];
     const { data, error } = await supabase
@@ -85,8 +100,10 @@ export const agents = {
     client?: SupabaseClient<Database>
   ) {
     const supabase = client ?? createServerSupabaseClient();
+    assertProviderUpdateIncludesModel(updates.provider, updates.model);
     const normalizedUpdates = {
       ...updates,
+      ...(updates.model !== undefined ? { model: updates.model.trim() } : {}),
       ...(updates.provider !== undefined ? { provider: normalizeProviderName(updates.provider) } : {})
     };
     const { data, error } = await supabase
@@ -144,7 +161,12 @@ export const agents = {
 
     const nextVersionNumber = ((versions?.[0]?.version_number as number | undefined) ?? 0) + 1;
     const versionLabel = payload.version ?? `v${nextVersionNumber}`;
-    const provider = normalizeProviderName(payload.provider ?? agent.provider);
+    const currentProvider = normalizeProviderName(agent.provider);
+    const provider = normalizeProviderName(payload.provider ?? currentProvider);
+    if (payload.provider !== undefined && provider !== currentProvider && !payload.model?.trim()) {
+      throw new Error('model must be provided when changing an agent version provider');
+    }
+    const model = payload.model?.trim() || agent.model || 'gpt-4o-mini';
 
     const insertPayload: Database['public']['Tables']['agent_versions']['Insert'] = {
       agent_id: agentId,
@@ -156,7 +178,7 @@ export const agents = {
       tools: payload.tools ?? [],
       metadata: payload.metadata ?? {},
       created_by: userId,
-      model: payload.model ?? agent.model ?? 'gpt-4o-mini',
+      model,
       provider
     };
 
@@ -167,7 +189,7 @@ export const agents = {
       .single();
 
     if (error) throw error;
-    return normalizeAgentVersionRow(data, payload.model ?? agent.model ?? 'gpt-4o-mini', provider);
+    return normalizeAgentVersionRow(data, model, provider);
   },
 
   async listVersions(agentId: string, client?: SupabaseClient<Database>) {
@@ -209,8 +231,10 @@ export const agents = {
     client?: SupabaseClient<Database>
   ) {
     const supabase = client ?? createServerSupabaseClient();
+    assertProviderUpdateIncludesModel(updates.provider, updates.model);
     const normalizedUpdates = {
       ...updates,
+      ...(updates.model !== undefined ? { model: updates.model.trim() } : {}),
       ...(updates.provider !== undefined ? { provider: normalizeProviderName(updates.provider) } : {})
     };
     const { data, error } = await supabase
