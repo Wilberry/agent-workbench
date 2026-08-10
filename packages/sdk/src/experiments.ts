@@ -69,6 +69,11 @@ export const experiments = {
     return data as Experiment;
   },
 
+  /**
+   * Start an experiment by enqueueing both evaluation runs. This method returns
+   * as soon as the durable queue rows exist; completion is reconciled by the
+   * evaluation worker as each side finishes.
+   */
   async executeExperiment(
     userId: string,
     payload: {
@@ -83,19 +88,19 @@ export const experiments = {
     client?: SupabaseClient<Database>
   ) {
     const supabase = client ?? createServerSupabaseClient();
-
     let experiment: Experiment | null = null;
 
     if (payload.experimentId) {
       experiment = await this.getExperiment(payload.experimentId, supabase);
       if (!experiment) throw new Error('Experiment not found');
 
-      const { error: statusError } = await supabase
-        .from('experiments')
-        .update({ status: 'running' })
-        .eq('id', experiment.id);
-
-      if (statusError) throw statusError;
+      if (experiment.status === 'running' && experiment.run_a_id && experiment.run_b_id) {
+        const [runA, runB] = await Promise.all([
+          evaluations.getEvaluationRun(experiment.run_a_id, supabase),
+          evaluations.getEvaluationRun(experiment.run_b_id, supabase)
+        ]);
+        return { experiment, runA, runB };
+      }
     } else {
       if (!payload.name || !payload.agentId || !payload.versionAId || !payload.versionBId || !payload.datasetId) {
         throw new Error('Missing required experiment payload fields');
@@ -112,7 +117,7 @@ export const experiments = {
             dataset_id: payload.datasetId,
             created_by: userId,
             organization_id: payload.organizationId ?? null,
-            status: 'running'
+            status: 'draft'
           }
         ])
         .select('*')
@@ -128,31 +133,39 @@ export const experiments = {
       const datasetId = payload.datasetId ?? experiment.dataset_id;
       const organizationId = payload.organizationId ?? experiment.organization_id ?? null;
 
-      const runA = await evaluations.createEvaluationRun(userId, {
-        datasetId,
-        agentVersionId: versionAId,
-        organizationId
-      }, supabase);
+      const runA = experiment.run_a_id
+        ? { run: await evaluations.getEvaluationRun(experiment.run_a_id, supabase) }
+        : await evaluations.createEvaluationRun(userId, {
+            datasetId,
+            agentVersionId: versionAId,
+            organizationId
+          }, supabase);
 
-      const runB = await evaluations.createEvaluationRun(userId, {
-        datasetId,
-        agentVersionId: versionBId,
-        organizationId
-      }, supabase);
+      const runB = experiment.run_b_id
+        ? { run: await evaluations.getEvaluationRun(experiment.run_b_id, supabase) }
+        : await evaluations.createEvaluationRun(userId, {
+            datasetId,
+            agentVersionId: versionBId,
+            organizationId
+          }, supabase);
 
-      const { error: updateError } = await supabase
+      const { data: runningExperiment, error: updateError } = await supabase
         .from('experiments')
         .update({
-          status: 'completed',
+          status: 'running',
           run_a_id: runA.run.id,
           run_b_id: runB.run.id
         })
-        .eq('id', experiment.id);
+        .eq('id', experiment.id)
+        .select('*')
+        .single();
 
-      if (updateError) throw updateError;
+      if (updateError || !runningExperiment) {
+        throw updateError ?? new Error('Failed to persist experiment evaluation runs');
+      }
 
       return {
-        experiment: { ...experiment, status: 'completed', run_a_id: runA.run.id, run_b_id: runB.run.id } as Experiment,
+        experiment: runningExperiment as Experiment,
         runA: runA.run,
         runB: runB.run
       };
@@ -160,5 +173,63 @@ export const experiments = {
       await supabase.from('experiments').update({ status: 'failed' }).eq('id', experiment.id);
       throw error;
     }
+  },
+
+  /**
+   * Reconcile an experiment when one of its queued evaluation runs changes
+   * terminal state. No-op when the run is not attached to an experiment.
+   */
+  async syncExperimentStatusForRun(runId: string, client?: SupabaseClient<Database>) {
+    const supabase = client ?? createServerSupabaseClient();
+    const { data: experiment, error } = await supabase
+      .from('experiments')
+      .select('*')
+      .or(`run_a_id.eq.${runId},run_b_id.eq.${runId}`)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!experiment) return null;
+
+    if (!experiment.run_a_id || !experiment.run_b_id) {
+      if (experiment.status !== 'running') {
+        const { data, error: updateError } = await supabase
+          .from('experiments')
+          .update({ status: 'running' })
+          .eq('id', experiment.id)
+          .select('*')
+          .single();
+        if (updateError) throw updateError;
+        return data as Experiment;
+      }
+      return experiment as Experiment;
+    }
+
+    const { data: runs, error: runsError } = await supabase
+      .from('evaluation_runs')
+      .select('id,status')
+      .in('id', [experiment.run_a_id, experiment.run_b_id]);
+    if (runsError) throw runsError;
+
+    const statuses = new Map((runs ?? []).map((run) => [run.id, run.status]));
+    const statusA = statuses.get(experiment.run_a_id);
+    const statusB = statuses.get(experiment.run_b_id);
+
+    let nextStatus: Experiment['status'] = 'running';
+    if (statusA === 'failed' || statusB === 'failed') {
+      nextStatus = 'failed';
+    } else if (statusA === 'completed' && statusB === 'completed') {
+      nextStatus = 'completed';
+    }
+
+    if (experiment.status === nextStatus) return experiment as Experiment;
+
+    const { data: updated, error: updateError } = await supabase
+      .from('experiments')
+      .update({ status: nextStatus })
+      .eq('id', experiment.id)
+      .select('*')
+      .single();
+    if (updateError) throw updateError;
+    return updated as Experiment;
   }
 };
