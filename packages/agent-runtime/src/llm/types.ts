@@ -53,9 +53,47 @@ export type LLMResponse = {
   raw?: unknown;
 };
 
+export type LLMStreamEvent =
+  | {
+      type: 'response_start';
+      provider_name: string;
+      model_name: string;
+    }
+  | {
+      type: 'text_delta';
+      delta: string;
+    }
+  | {
+      type: 'tool_call_start';
+      index: number;
+      id: string;
+      name: string;
+    }
+  | {
+      type: 'tool_call_delta';
+      index: number;
+      id: string;
+      arguments_delta: string;
+    }
+  | {
+      type: 'tool_call_end';
+      index: number;
+      call: LLMToolCall;
+    }
+  | {
+      type: 'usage';
+      usage: LLMUsage;
+      estimated_cost: number;
+    }
+  | {
+      type: 'response_end';
+      response: LLMResponse;
+    };
+
 export type LLMProvider = {
   name: string;
   chatCompletion(request: LLMRequest): Promise<LLMResponse>;
+  streamChatCompletion?(request: LLMRequest): AsyncIterable<LLMStreamEvent>;
 };
 
 export type ModelPricing = {
