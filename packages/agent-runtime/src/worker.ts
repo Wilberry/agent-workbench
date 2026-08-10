@@ -5,6 +5,7 @@ import type { LLMMessage } from './llm/types';
 import { resolveExecutionToolDefinitions } from './tools';
 import {
   executeLLMToolLoop,
+  LLMToolExecutionError,
   LLMToolLoopLimitError,
   LLMToolNotAllowedError
 } from './toolExecution';
@@ -68,7 +69,10 @@ function getExponentialBackoff(retryCount: number): number {
 }
 
 function isNonRetryableToolContractError(error: unknown): boolean {
-  return error instanceof LLMToolNotAllowedError || error instanceof LLMToolArgumentsError;
+  return error instanceof LLMToolNotAllowedError ||
+    error instanceof LLMToolArgumentsError ||
+    error instanceof LLMToolExecutionError ||
+    error instanceof LLMToolLoopLimitError;
 }
 
 // NOTE: Step-level persistence and realtime broadcasts are handled by `persistExecutionStep` in queue.ts
@@ -201,6 +205,12 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
             }
           ];
 
+          const inputBeforeStep = totalInputTokens;
+          const outputBeforeStep = totalOutputTokens;
+          const tokensBeforeStep = totalTokens;
+          const costBeforeStep = totalEstimatedCost;
+          const latencyBeforeStep = totalLatencyMs;
+
           const roleResult = await executeLLMToolLoop({
             provider: agentProvider,
             model: agentModel,
@@ -209,7 +219,22 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
             runId,
             organizationId,
             ownerUserId,
+            agentId: conversation.agent_id,
+            conversationId: job.conversationId,
             maxToolRounds: 2,
+            async onModelResponse(_response, aggregate) {
+              lastProviderName = aggregate.provider_name ?? agentProvider;
+              lastModelName = aggregate.model_name ?? agentModel;
+              await updateRunTelemetry(runId, {
+                input_tokens: inputBeforeStep + aggregate.prompt_tokens,
+                output_tokens: outputBeforeStep + aggregate.completion_tokens,
+                total_tokens: tokensBeforeStep + aggregate.total_tokens,
+                estimated_cost: costBeforeStep + aggregate.estimated_cost,
+                latency_ms: latencyBeforeStep + aggregate.latency_ms,
+                provider_name: lastProviderName,
+                model_name: lastModelName
+              });
+            },
             onToolExecuted(record) {
               void persistEvent('tool_call', {
                 stepIndex,
@@ -225,22 +250,13 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
 
           const finalOutput = roleResult.content;
           toolsCalled.push(...roleResult.toolsCalled);
-          totalInputTokens += roleResult.prompt_tokens;
-          totalOutputTokens += roleResult.completion_tokens;
-          totalTokens += roleResult.total_tokens;
-          totalEstimatedCost += roleResult.estimated_cost;
-          totalLatencyMs += roleResult.latency_ms;
+          totalInputTokens = inputBeforeStep + roleResult.prompt_tokens;
+          totalOutputTokens = outputBeforeStep + roleResult.completion_tokens;
+          totalTokens = tokensBeforeStep + roleResult.total_tokens;
+          totalEstimatedCost = costBeforeStep + roleResult.estimated_cost;
+          totalLatencyMs = latencyBeforeStep + roleResult.latency_ms;
           lastProviderName = roleResult.provider_name ?? agentProvider;
-          lastModelName = roleResult.model_name;
-          await updateRunTelemetry(runId, {
-            input_tokens: totalInputTokens,
-            output_tokens: totalOutputTokens,
-            total_tokens: totalTokens,
-            estimated_cost: totalEstimatedCost,
-            latency_ms: totalLatencyMs,
-            provider_name: lastProviderName,
-            model_name: lastModelName
-          });
+          lastModelName = roleResult.model_name ?? agentModel;
 
           const stepTokens = roleResult.total_tokens;
           const stepLatencyMs = roleResult.latency_ms;
@@ -293,7 +309,7 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
             break;
           }
 
-          if (isNonRetryableToolContractError(error) || error instanceof LLMToolLoopLimitError) {
+          if (isNonRetryableToolContractError(error)) {
             console.error(`Step ${stepIndex} (${role}) tool contract failed:`, stepError);
             break;
           }
@@ -399,9 +415,9 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
     if (isNonRetryableToolContractError(error)) {
       try {
         await markQueueJobFailed(runId, errorMessage);
-        await markRunFailed(runId, `Non-retryable tool contract failure: ${errorMessage}`);
+        await markRunFailed(runId, `Non-retryable tool failure: ${errorMessage}`);
       } catch (qErr) {
-        console.warn('Failed to mark non-retryable tool contract failure terminal:', qErr);
+        console.warn('Failed to mark non-retryable tool failure terminal:', qErr);
       }
       throw error;
     }
