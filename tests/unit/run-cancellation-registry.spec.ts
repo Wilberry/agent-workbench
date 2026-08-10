@@ -4,7 +4,7 @@ import {
   registerActiveRun
 } from '@agent-workbench/agent-runtime';
 
- describe('active agent run cancellation registry', () => {
+describe('active agent run cancellation registry', () => {
   it('aborts the controller registered for a run and unregisters cleanly', () => {
     const controller = new AbortController();
     const unregister = registerActiveRun('run-registry-test', controller);
