@@ -48,7 +48,7 @@ export const openaiProvider: LLMProvider = {
     );
 
     const latency_ms = Date.now() - start;
-    const payload = await res.json();
+    const payload = JSON.parse(res.body);
     const usage = normalizeUsage(payload);
     const content = extractContent(payload);
     const pricingProvider = getPricingProvider();
