@@ -9,7 +9,8 @@ import {
   LLMToolContinuationError,
   LLMToolExecutionError,
   LLMToolLoopLimitError,
-  LLMToolNotAllowedError
+  LLMToolNotAllowedError,
+  type LLMToolLoopCheckpoint
 } from './toolExecution';
 import {
   AgentExecutionCancelledError,
@@ -96,15 +97,6 @@ async function sleepWithSignal(ms: number, signal: AbortSignal): Promise<void> {
 
 function getExponentialBackoff(retryCount: number): number {
   return Math.pow(2, retryCount) * 1000;
-}
-
-function isToolContractError(error: unknown): boolean {
-  return error instanceof LLMToolNotAllowedError ||
-    error instanceof LLMToolArgumentsError ||
-    error instanceof LLMToolExecutionError ||
-    error instanceof LLMToolContinuationError ||
-    error instanceof LLMToolCheckpointError ||
-    error instanceof LLMToolLoopLimitError;
 }
 
 function isNonRetryableToolContractError(error: unknown): boolean {
@@ -283,7 +275,11 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
       let stepFailed = false;
       let stepError: string | null = null;
       let stepCause: unknown = null;
-      const resumeCheckpoint = getRunCheckpoint(existingRun.execution_trace, stepIndex, role);
+      let resumeCheckpoint: LLMToolLoopCheckpoint | undefined = getRunCheckpoint(
+        existingRun.execution_trace,
+        stepIndex,
+        role
+      );
 
       for (let retryAttempt = 0; retryAttempt <= MAX_RETRIES; retryAttempt += 1) {
         try {
@@ -319,7 +315,10 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
             signal: executionController.signal,
             resumeFrom: resumeCheckpoint,
             assertActive: () => assertRunActive(supabase, runId, executionController.signal),
-            onCheckpoint: (checkpoint) => persistRunCheckpoint(runId, stepIndex, role, checkpoint),
+            async onCheckpoint(checkpoint) {
+              await persistRunCheckpoint(runId, stepIndex, role, checkpoint);
+              resumeCheckpoint = checkpoint;
+            },
             async onModelResponse(_response, aggregate) {
               lastProviderName = aggregate.provider_name ?? agentProvider;
               lastModelName = aggregate.model_name ?? agentModel;
@@ -346,6 +345,7 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
             }
           });
 
+          if (roleResult.resumeCheckpoint) resumeCheckpoint = roleResult.resumeCheckpoint;
           await assertRunActive(supabase, runId, executionController.signal);
           const finalOutput = roleResult.content;
           toolsCalled.push(...roleResult.toolsCalled);
@@ -379,6 +379,7 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
 
           await persistExecutionStep(runId, execStep);
           await clearRunCheckpoint(runId, stepIndex);
+          resumeCheckpoint = undefined;
 
           episode.push(`${role.toUpperCase()} OUTPUT:\n${finalOutput}`);
           lastAgentOutput = finalOutput;
