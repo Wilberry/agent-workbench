@@ -19,6 +19,7 @@ export const mockProvider: LLMProvider = {
 
     return {
       content,
+      provider_name: 'mock',
       model_name: request.model ?? 'gpt-4o-mini',
       prompt_tokens: promptTokens,
       completion_tokens: completionTokens,
