@@ -271,7 +271,7 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
     for (let stepIndex = currentStep; stepIndex < effectiveWorkflow.length; stepIndex += 1) {
       await assertRunActive(supabase, runId, executionController.signal);
       const role = effectiveWorkflow[stepIndex]!;
-      const toolsCalled: string[] = [];
+      let toolsCalled: string[] = [];
       let stepFailed = false;
       let stepError: string | null = null;
       let stepCause: unknown = null;
@@ -348,7 +348,7 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
           if (roleResult.resumeCheckpoint) resumeCheckpoint = roleResult.resumeCheckpoint;
           await assertRunActive(supabase, runId, executionController.signal);
           const finalOutput = roleResult.content;
-          toolsCalled.push(...roleResult.toolsCalled);
+          toolsCalled = [...roleResult.toolsCalled];
           totalInputTokens = inputBeforeStep + roleResult.prompt_tokens;
           totalOutputTokens = outputBeforeStep + roleResult.completion_tokens;
           totalTokens = tokensBeforeStep + roleResult.total_tokens;
@@ -469,11 +469,6 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
         };
 
         await persistExecutionStep(runId, errorExecStep);
-        await runtimeClient
-          .from('agent_runs')
-          .update({ current_step: stepIndex })
-          .eq('id', runId)
-          .neq('status', 'cancelled');
 
         if (stepCause instanceof Error) throw stepCause;
         throw new Error(`Workflow failed at step ${stepIndex}: ${stepError}`);
@@ -545,9 +540,12 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
     if (isNonRetryableToolContractError(error)) {
       try {
         await markQueueJobFailed(runId, errorMessage);
-        await markRunFailed(runId, `Non-retryable tool failure: ${errorMessage}`);
+        const prefix = error instanceof LLMToolCheckpointError
+          ? 'Non-retryable execution checkpoint failure'
+          : 'Non-retryable tool failure';
+        await markRunFailed(runId, `${prefix}: ${errorMessage}`);
       } catch (qErr) {
-        console.warn('Failed to mark non-retryable tool failure terminal:', qErr);
+        console.warn('Failed to mark non-retryable runtime failure terminal:', qErr);
       }
       throw error;
     }
