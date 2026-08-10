@@ -30,25 +30,21 @@ describe('Anthropic provider', () => {
 
   it('translates the generic LLM request into the Anthropic Messages API contract', async () => {
     process.env.ANTHROPIC_API_KEY = 'test-anthropic-key';
-    const fetchMock = vi.fn(async () => ({
-      ok: true,
-      status: 200,
-      json: async () => ({
-        id: 'msg_test',
-        type: 'message',
-        role: 'assistant',
-        model: 'claude-sonnet-4-6',
-        content: [
-          { type: 'text', text: 'Hello' },
-          { type: 'text', text: 'from Claude' }
-        ],
-        usage: {
-          input_tokens: 1000,
-          output_tokens: 500
-        }
-      }),
-      text: async () => ''
-    }));
+    const payload = {
+      id: 'msg_test',
+      type: 'message',
+      role: 'assistant',
+      model: 'claude-sonnet-4-6',
+      content: [
+        { type: 'text', text: 'Hello' },
+        { type: 'text', text: 'from Claude' }
+      ],
+      usage: {
+        input_tokens: 1000,
+        output_tokens: 500
+      }
+    };
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(payload), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
 
     const response = await chatCompletion({
@@ -126,17 +122,20 @@ describe('Anthropic provider', () => {
 
   it('surfaces Anthropic HTTP failures with status and response text', async () => {
     process.env.ANTHROPIC_API_KEY = 'test-anthropic-key';
-    vi.stubGlobal('fetch', vi.fn(async () => ({
-      ok: false,
-      status: 429,
-      text: async () => '{"type":"error","error":{"type":"rate_limit_error"}}'
-    })));
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      '{"type":"error","error":{"type":"rate_limit_error"}}',
+      {
+        status: 429,
+        headers: { 'retry-after': '1', 'request-id': 'req_test' }
+      }
+    )));
 
     await expect(
       chatCompletion({
         provider: 'anthropic',
         model: 'claude-sonnet-4-6',
-        messages: [{ role: 'user', content: 'Hello' }]
+        messages: [{ role: 'user', content: 'Hello' }],
+        max_retries: 0
       })
     ).rejects.toThrow('Anthropic request failed: 429');
   });

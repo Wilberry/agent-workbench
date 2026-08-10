@@ -1,5 +1,6 @@
 import type { LLMMessage, LLMProvider, LLMRequest, LLMResponse, LLMUsage } from '../types';
 import { getPricingProvider, UnknownModelPricingError } from '../pricing';
+import { requestWithProviderReliability } from '../http';
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_API_VERSION = '2023-06-01';
@@ -89,23 +90,26 @@ export const anthropicProvider: LLMProvider = {
     };
 
     const start = Date.now();
-    const response = await fetch(ANTHROPIC_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': ANTHROPIC_API_VERSION
+    const response = await requestWithProviderReliability(
+      'anthropic',
+      ANTHROPIC_URL,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': ANTHROPIC_API_VERSION
+        },
+        body: JSON.stringify(body)
       },
-      body: JSON.stringify(body)
-    });
+      {
+        timeoutMs: request.timeout_ms,
+        maxRetries: request.max_retries
+      }
+    );
     const latency_ms = Date.now() - start;
 
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`Anthropic request failed: ${response.status} ${text}`);
-    }
-
-    const payload = await response.json();
+    const payload = JSON.parse(response.body);
     const usage = normalizeUsage(payload);
     const modelName = payload?.model ?? request.model;
     const estimated_cost = pricingProvider.estimateCost(modelName, usage, 'anthropic');
