@@ -15,7 +15,7 @@ Background workers
 - Evaluation workers consume `evaluation_run_jobs` through `startEvaluationWorker()` or `processNextEvaluationRun()`.
 - Evaluation workers are safe to restart: persisted `evaluation_run_results` act as per-example checkpoints, and stale queue leases can be reclaimed.
 - Agent and evaluation workers can run in the same container deployment or scale independently when evaluation workloads become large.
-- Apply `supabase/migrations/000019_evaluation_run_queue.sql` before enabling queued evaluation execution.
+- Apply `supabase/migrations/20260810023711_evaluation_run_queue.sql` before enabling queued evaluation execution.
 
 Operational concerns
 
