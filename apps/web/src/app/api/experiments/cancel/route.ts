@@ -6,8 +6,7 @@ import { createServerSupabaseClient, experiments } from '@agent-workbench/sdk';
 function errorStatus(message: string) {
   if (message.startsWith('Not authorized')) return 403;
   if (message.endsWith('not found')) return 404;
-  if (message.includes('already cancelled') || message.includes('already completed') || message.includes('already failed')) return 409;
-  if (message.includes('must match') || message.includes('does not belong')) return 400;
+  if (message.includes('already completed') || message.includes('already failed')) return 409;
   return 500;
 }
 
@@ -22,11 +21,14 @@ async function handlePost(request: NextRequest, authClient = createRouteHandlerS
     }
 
     const supabase = createServerSupabaseClient();
-    const executedExperiment = await experiments.executeExperiment(authUser.id, {
-      experimentId: body.experimentId
-    }, supabase);
+    const cancelled = await experiments.cancelExperiment(
+      authUser.id,
+      body.experimentId,
+      body.reason ?? null,
+      supabase
+    );
 
-    return new Response(JSON.stringify({ experiment: executedExperiment.experiment, runA: executedExperiment.runA, runB: executedExperiment.runB }), {
+    return new Response(JSON.stringify(cancelled), {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
     });

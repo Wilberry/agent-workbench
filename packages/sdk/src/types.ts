@@ -91,8 +91,10 @@ export type EvaluationRun = {
   agent_version_id: string;
   user_id: string;
   organization_id?: string | null;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
   summary: Record<string, unknown>;
+  cancelled_at?: string | null;
+  cancellation_reason?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -119,7 +121,9 @@ export type Experiment = {
   organization_id?: string | null;
   run_a_id?: string | null;
   run_b_id?: string | null;
-  status: 'draft' | 'running' | 'completed' | 'failed';
+  status: 'draft' | 'running' | 'completed' | 'failed' | 'cancelled';
+  cancelled_at?: string | null;
+  cancellation_reason?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -400,8 +404,10 @@ export type Database = {
         agent_version_id: string;
         user_id: string;
         organization_id?: string | null;
-        status: 'pending' | 'running' | 'completed' | 'failed';
+        status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
         summary: Record<string, unknown>;
+        cancelled_at?: string | null;
+        cancellation_reason?: string | null;
         created_at: string;
         updated_at: string;
       }>;
@@ -426,7 +432,9 @@ export type Database = {
         organization_id?: string | null;
         run_a_id?: string | null;
         run_b_id?: string | null;
-        status: 'draft' | 'running' | 'completed' | 'failed';
+        status: 'draft' | 'running' | 'completed' | 'failed' | 'cancelled';
+        cancelled_at?: string | null;
+        cancellation_reason?: string | null;
         created_at: string;
         updated_at: string;
       }>;

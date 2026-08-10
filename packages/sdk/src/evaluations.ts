@@ -9,6 +9,15 @@ import type {
 } from './types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+export class EvaluationRunCancelledError extends Error {
+  code = 'EVALUATION_RUN_CANCELLED';
+
+  constructor(public readonly runId: string) {
+    super(`Evaluation run ${runId} was cancelled`);
+    this.name = 'EvaluationRunCancelledError';
+  }
+}
+
 function normalizeEvaluationRunSummary(results: Array<{ exact_match: boolean }>) {
   const total = results.length;
   const passed = results.filter((result) => result.exact_match).length;
@@ -37,6 +46,22 @@ function normalizeTextValue(value: unknown) {
     return String(value).trim().toLowerCase();
   } catch {
     return String(value ?? '').trim().toLowerCase();
+  }
+}
+
+async function assertEvaluationRunNotCancelled(
+  supabase: SupabaseClient<Database>,
+  runId: string
+): Promise<void> {
+  const { data, error } = await supabase
+    .from('evaluation_runs')
+    .select('status')
+    .eq('id', runId)
+    .single();
+
+  if (error) throw error;
+  if (data.status === 'cancelled') {
+    throw new EvaluationRunCancelledError(runId);
   }
 }
 
@@ -233,6 +258,36 @@ export const evaluations = {
     return (data ?? []) as EvaluationRun[];
   },
 
+  async assertEvaluationRunAccess(
+    userId: string,
+    runId: string,
+    client?: SupabaseClient<Database>
+  ) {
+    const supabase = client ?? createServerSupabaseClient();
+    const { data: run, error } = await supabase
+      .from('evaluation_runs')
+      .select('*')
+      .eq('id', runId)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!run) throw new Error('Evaluation run not found');
+    if (run.user_id === userId) return run as EvaluationRun;
+
+    if (run.organization_id) {
+      const { data: membership, error: membershipError } = await supabase
+        .from('organization_memberships')
+        .select('id')
+        .eq('org_id', run.organization_id)
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (membershipError) throw membershipError;
+      if (membership) return run as EvaluationRun;
+    }
+
+    throw new Error('Not authorized to access this evaluation run');
+  },
+
   /**
    * Create and enqueue an evaluation run. Execution happens in the runtime worker.
    */
@@ -287,8 +342,7 @@ export const evaluations = {
 
     if (runError || !run) throw runError ?? new Error('Failed to create evaluation run');
 
-    // The queue table is introduced by migration 000019. Keep the SDK Database
-    // type independent from migration ordering by narrowing this table locally.
+    // The queue table is introduced independently from generated SDK types.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const queueClient = supabase as any;
     const { error: queueError } = await queueClient.from('evaluation_run_jobs').insert([
@@ -314,9 +368,78 @@ export const evaluations = {
     return { run: { ...(run as EvaluationRun), status: 'pending', summary } as EvaluationRun };
   },
 
+  async cancelEvaluationRun(
+    userId: string,
+    runId: string,
+    reason?: string | null,
+    client?: SupabaseClient<Database>
+  ) {
+    const supabase = client ?? createServerSupabaseClient();
+    const run = await this.assertEvaluationRunAccess(userId, runId, supabase);
+
+    if (run.status === 'cancelled') return run;
+    if (run.status === 'completed' || run.status === 'failed') {
+      throw new Error(`Evaluation run is already ${run.status}`);
+    }
+
+    const [results, examples] = await Promise.all([
+      this.getEvaluationResults(runId, supabase),
+      this.listDatasetExamples(run.dataset_id, supabase)
+    ]);
+    const cancelledAt = new Date().toISOString();
+    const cancellationReason = reason?.trim() || null;
+    const summary = {
+      ...buildEvaluationRunSummary(results, examples.length),
+      cancellation: {
+        cancelled_at: cancelledAt,
+        reason: cancellationReason
+      }
+    };
+
+    const { data: cancelledRun, error: cancelError } = await supabase
+      .from('evaluation_runs')
+      .update({
+        status: 'cancelled',
+        summary,
+        cancelled_at: cancelledAt,
+        cancellation_reason: cancellationReason
+      })
+      .eq('id', runId)
+      .in('status', ['pending', 'running'])
+      .select('*')
+      .maybeSingle();
+
+    if (cancelError) throw cancelError;
+    if (!cancelledRun) {
+      const latest = await this.getEvaluationRun(runId, supabase);
+      if (latest.status === 'cancelled') return latest;
+      throw new Error(`Evaluation run is already ${latest.status}`);
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const queueClient = supabase as any;
+    const { error: queueError } = await queueClient
+      .from('evaluation_run_jobs')
+      .update({
+        status: 'cancelled',
+        locked_at: null,
+        cancelled_at: cancelledAt,
+        error_message: cancellationReason ?? 'Cancelled by user',
+        updated_at: cancelledAt
+      })
+      .eq('evaluation_run_id', runId)
+      .in('status', ['pending', 'running']);
+    if (queueError) throw queueError;
+
+    return cancelledRun as EvaluationRun;
+  },
+
   /**
    * Execute a persisted evaluation run. Existing result rows are treated as
    * checkpoints so a retried job resumes from the first unfinished example.
+   * Cancellation is cooperative: an in-flight provider call may finish, but
+   * the worker checks cancellation before and after each example and never
+   * persists results after cancellation has won.
    */
   async executeEvaluationRun(runId: string, client?: SupabaseClient<Database>) {
     const supabase = client ?? createServerSupabaseClient();
@@ -329,28 +452,40 @@ export const evaluations = {
     if (!agentVersion) throw new Error('Agent version not found');
 
     let resultRows = await this.getEvaluationResults(runId, supabase);
+    if (run.status === 'cancelled') {
+      throw new EvaluationRunCancelledError(runId);
+    }
     if (run.status === 'completed') {
       return { run, results: resultRows, summary: run.summary };
     }
 
     let summary = buildEvaluationRunSummary(resultRows, examples.length);
-    const { error: runningError } = await supabase
+    const { data: runningRun, error: runningError } = await supabase
       .from('evaluation_runs')
       .update({ status: 'running', summary })
-      .eq('id', runId);
+      .eq('id', runId)
+      .in('status', ['pending', 'running'])
+      .select('id')
+      .maybeSingle();
     if (runningError) throw runningError;
+    if (!runningRun) {
+      await assertEvaluationRunNotCancelled(supabase, runId);
+      throw new Error('Evaluation run is not executable');
+    }
 
     const completedExampleIds = new Set(resultRows.map((result) => result.example_id));
 
     for (const example of examples) {
       if (completedExampleIds.has(example.id)) continue;
 
+      await assertEvaluationRunNotCancelled(supabase, runId);
       const agentResponse = await runAgentForEvaluation(
         agentVersion.agent_id,
         run.agent_version_id,
         example.input,
         supabase
       );
+      await assertEvaluationRunNotCancelled(supabase, runId);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const normalizedAgentOutput = normalizeTextValue((agentResponse as any)?.text ?? agentResponse);
@@ -379,17 +514,30 @@ export const evaluations = {
         .select('*')
         .single();
 
-      if (resultError || !result) throw resultError ?? new Error('Failed to persist evaluation result');
+      if (resultError || !result) {
+        const message = String(resultError?.message ?? resultError ?? '');
+        if (message.includes('evaluation_run_cancelled')) {
+          throw new EvaluationRunCancelledError(runId);
+        }
+        throw resultError ?? new Error('Failed to persist evaluation result');
+      }
 
       resultRows = [...resultRows, result as EvaluationRunResult];
       completedExampleIds.add(example.id);
       summary = buildEvaluationRunSummary(resultRows, examples.length);
 
-      const { error: progressError } = await supabase
+      const { data: progressRun, error: progressError } = await supabase
         .from('evaluation_runs')
         .update({ summary })
-        .eq('id', runId);
+        .eq('id', runId)
+        .eq('status', 'running')
+        .select('id')
+        .maybeSingle();
       if (progressError) throw progressError;
+      if (!progressRun) {
+        await assertEvaluationRunNotCancelled(supabase, runId);
+        throw new Error('Evaluation run left running state during execution');
+      }
     }
 
     summary = buildEvaluationRunSummary(resultRows, examples.length);
@@ -397,10 +545,15 @@ export const evaluations = {
       .from('evaluation_runs')
       .update({ status: 'completed', summary })
       .eq('id', runId)
+      .eq('status', 'running')
       .select('*')
-      .single();
+      .maybeSingle();
 
-    if (updateError || !completedRun) throw updateError ?? new Error('Failed to complete evaluation run');
+    if (updateError) throw updateError;
+    if (!completedRun) {
+      await assertEvaluationRunNotCancelled(supabase, runId);
+      throw new Error('Failed to complete evaluation run');
+    }
 
     return { run: completedRun as EvaluationRun, results: resultRows, summary };
   },
@@ -412,6 +565,8 @@ export const evaluations = {
   ) {
     const supabase = client ?? createServerSupabaseClient();
     const run = await this.getEvaluationRun(runId, supabase);
+    if (run.status === 'cancelled') return;
+
     const results = await this.getEvaluationResults(runId, supabase);
     const examples = await this.listDatasetExamples(run.dataset_id, supabase);
     const summary = {
@@ -422,7 +577,8 @@ export const evaluations = {
     const { error } = await supabase
       .from('evaluation_runs')
       .update({ status: 'failed', summary })
-      .eq('id', runId);
+      .eq('id', runId)
+      .neq('status', 'cancelled');
     if (error) throw error;
   },
 
