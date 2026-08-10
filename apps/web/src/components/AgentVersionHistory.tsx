@@ -10,6 +10,12 @@ interface AgentVersionHistoryProps {
   currentVersion?: AgentVersion | null;
 }
 
+function providerLabel(provider?: string | null) {
+  if (!provider || provider === 'openai') return 'OpenAI';
+  if (provider === 'anthropic') return 'Anthropic';
+  return provider;
+}
+
 export default function AgentVersionHistory({
   agentId,
   versions,
@@ -52,7 +58,8 @@ export default function AgentVersionHistory({
                     )}
                   </div>
                   <div className="mt-1 text-sm text-slate-400">{version.description || 'No description'}</div>
-                  <div className="mt-1 flex gap-4 text-xs text-slate-500">
+                  <div className="mt-1 flex flex-wrap gap-4 text-xs text-slate-500">
+                    <span>{providerLabel(version.provider)} · {version.model}</span>
                     <span>Created: {new Date(version.created_at).toLocaleString()}</span>
                     {version.created_by && (
                       <span>By: {version.created_by.slice(0, 8)}</span>
@@ -75,9 +82,15 @@ export default function AgentVersionHistory({
 
             {isExpanded && (
               <div className="mt-4 space-y-3 border-t border-slate-700 pt-4">
-                <div>
-                  <div className="mb-2 text-sm font-semibold text-slate-300">Model</div>
-                  <div className="text-sm text-slate-400">{version.model}</div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <div className="mb-2 text-sm font-semibold text-slate-300">Provider</div>
+                    <div className="text-sm text-slate-400">{providerLabel(version.provider)}</div>
+                  </div>
+                  <div>
+                    <div className="mb-2 text-sm font-semibold text-slate-300">Model</div>
+                    <div className="text-sm text-slate-400">{version.model}</div>
+                  </div>
                 </div>
 
                 <div>
