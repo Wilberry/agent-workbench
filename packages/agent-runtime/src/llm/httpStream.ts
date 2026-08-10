@@ -1,4 +1,9 @@
 import {
+  AgentExecutionCancelledError,
+  cancellationReason,
+  throwIfAborted
+} from '../cancellation';
+import {
   DEFAULT_PROVIDER_MAX_RETRIES,
   DEFAULT_PROVIDER_RETRY_BASE_MS,
   DEFAULT_PROVIDER_RETRY_MAX_MS,
@@ -43,6 +48,55 @@ async function defaultSleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function linkExternalAbort(controller: AbortController, signal?: AbortSignal): () => void {
+  if (!signal) return () => {};
+  if (signal.aborted) {
+    controller.abort(signal.reason);
+    return () => {};
+  }
+  const onAbort = () => controller.abort(signal.reason);
+  signal.addEventListener('abort', onAbort, { once: true });
+  return () => signal.removeEventListener('abort', onAbort);
+}
+
+async function sleepWithSignal(
+  ms: number,
+  sleep: (ms: number) => Promise<void>,
+  signal?: AbortSignal
+): Promise<void> {
+  throwIfAborted(signal);
+  if (!signal) {
+    await sleep(ms);
+    return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const cleanup = () => signal.removeEventListener('abort', onAbort);
+    const onAbort = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new AgentExecutionCancelledError(cancellationReason(signal)));
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    void sleep(ms).then(
+      () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve();
+      },
+      (error) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(error);
+      }
+    );
+  });
+}
+
 export async function* streamProviderResponseWithReliability(
   provider: string,
   url: string,
@@ -59,8 +113,10 @@ export async function* streamProviderResponseWithReliability(
   const maxAttempts = maxRetries + 1;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    throwIfAborted(options.signal);
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const unlinkAbort = linkExternalAbort(controller, options.signal);
+    const timeout = setTimeout(() => controller.abort('provider_timeout'), timeoutMs);
     let emitted = false;
 
     try {
@@ -71,6 +127,7 @@ export async function* streamProviderResponseWithReliability(
 
       if (!response.ok) {
         const responseBody = await response.text();
+        throwIfAborted(options.signal);
         const retryAfterMs = parseRetryAfterMs(response.headers);
         const retryable = isRetryableProviderStatus(response.status);
         const error = new LLMProviderRequestError(
@@ -88,7 +145,11 @@ export async function* streamProviderResponseWithReliability(
 
         if (!retryable || attempt >= maxAttempts) throw error;
         clearTimeout(timeout);
-        await sleep(retryDelayMs(attempt, retryAfterMs, baseDelayMs, maxDelayMs, random));
+        await sleepWithSignal(
+          retryDelayMs(attempt, retryAfterMs, baseDelayMs, maxDelayMs, random),
+          sleep,
+          options.signal
+        );
         continue;
       }
 
@@ -108,6 +169,7 @@ export async function* streamProviderResponseWithReliability(
       const reader = response.body.getReader();
       try {
         while (true) {
+          throwIfAborted(options.signal);
           const { done, value } = await reader.read();
           if (done) break;
           if (!value || value.byteLength === 0) continue;
@@ -115,13 +177,25 @@ export async function* streamProviderResponseWithReliability(
           yield value;
         }
       } finally {
+        if (options.signal?.aborted) {
+          try {
+            await reader.cancel(cancellationReason(options.signal));
+          } catch {
+            // Best effort. The provider connection is already aborted.
+          }
+        }
         reader.releaseLock();
       }
 
       clearTimeout(timeout);
+      throwIfAborted(options.signal);
       return;
     } catch (error) {
       clearTimeout(timeout);
+      if (options.signal?.aborted) {
+        throw new AgentExecutionCancelledError(cancellationReason(options.signal));
+      }
+      if (error instanceof AgentExecutionCancelledError) throw error;
       if (error instanceof LLMProviderRequestError) throw error;
 
       const timedOut = controller.signal.aborted;
@@ -138,14 +212,16 @@ export async function* streamProviderResponseWithReliability(
             }
           );
 
-      // Once any bytes have been emitted, retrying would replay already-observed
-      // model output and potentially duplicate tool-call deltas. Surface the
-      // failure instead and let the orchestration layer decide what is safe.
       if (emitted || attempt >= maxAttempts) throw normalizedError;
 
-      await sleep(retryDelayMs(attempt, undefined, baseDelayMs, maxDelayMs, random));
+      await sleepWithSignal(
+        retryDelayMs(attempt, undefined, baseDelayMs, maxDelayMs, random),
+        sleep,
+        options.signal
+      );
     } finally {
       clearTimeout(timeout);
+      unlinkAbort();
     }
   }
 
