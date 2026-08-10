@@ -1,298 +1,224 @@
-Agent Workbench
+# Agent Workbench
 
-Release: v0.4.0 — Experimentation foundations and realtime observability
+**Current release: v0.4.0**
 
-Build, evaluate, observe and deploy AI agents on Supabase.
+Build, evaluate, observe, and operate AI agents on Supabase.
 
-Agent Workbench is an open-source developer platform for building, testing, evaluating, observing and deploying AI agents.
+Agent Workbench is an open-source developer platform for versioned agent execution, evaluation, observability, marketplace workflows, and multi-tenant operations.
 
-Inspired by tools like LangSmith, OpenAI Playground, PostHog and MCP Inspector, Agent Workbench provides a unified environment for agent development, evaluation, observability and deployment—built natively on Supabase.
+## Current status
 
----
+Agent Workbench is a production-oriented pre-release platform. The backend architecture is substantially implemented, while several developer-platform and provider-expansion capabilities remain planned.
 
-Why Agent Workbench?
+### Implemented
 
-Building AI agents in production is difficult.
+- Agent creation and versioning
+- Version-aware agent execution
+- Single-agent and multi-agent workflow execution
+- Memory retrieval and embeddings
+- Tool execution loop
+- Background agent-run queue
+- Retry, stale-job recovery, and dead-letter behavior
+- Run traces, replay foundations, token usage, latency, and cost telemetry
+- Evaluation datasets, examples, evaluation runs, and persisted results
+- Version-to-version experiments
+- Organization-scoped multi-tenancy and RBAC
+- Marketplace publish, install, and fork workflows
+- Organization quota enforcement and append-only usage events
+- Realtime run and execution-step updates
+- Hermetic contributor validation plus separate integration, security, reliability, and E2E suites
 
-Developers need tools to:
+### Beta / stabilization
 
-- Build and iterate on agents
-- Test prompts and workflows
-- Evaluate performance
-- Monitor production usage
-- Debug failures
-- Manage tools and integrations
-- Deploy reliably
+- OpenAI is the only live LLM provider currently registered; a mock provider is available for explicit test use
+- Cost estimates are based on a local pricing catalog; unknown model pricing is represented as unknown rather than silently treated as free
+- Multi-agent workflow failures may fall back to the single-agent runtime, with fallback state recorded in execution traces
+- Evaluation and experiment execution is currently synchronous and is the next major architecture target
+- The current tool loop uses a structured text protocol rather than provider-native tool/function calling
 
-Agent Workbench brings these capabilities together in a single platform.
+### Planned
 
----
+- Queued evaluation and experiment execution with progress, retry, cancellation, and recovery
+- Additional model providers such as Anthropic, Gemini, and OpenRouter
+- Provider health, retry, and pricing-registry improvements
+- Provider-native structured tool calling and richer streaming
+- Public API authentication and API keys
+- CLI and polished external SDK workflows
+- MCP expansion
+- Knowledge ingestion and RAG workflows
 
-Features
+## Repository structure
 
-- Agent Development: create agents, version agents, compare versions, quick testing
-- Agent Operations: run history, replay runs, realtime monitoring, trace explorer
-- Evaluation: datasets, evaluation runs, analytics dashboard
-- Marketplace: publish and browse org-scoped agents
-- Organizations: multi-tenant orgs, billing dashboard, usage analytics
-- Infrastructure: Supabase, background workers, queue system, realtime subscriptions
-
-Evaluation Engine
-
-- Dataset management
-- Automated benchmark execution
-- Regression testing
-- Hallucination detection
-- Cost and latency analysis
-
-Observability
-
-- Request tracing
-- Tool execution tracking
-- Token usage analytics
-- Execution graph visualization
-- Failure analysis
-
-Quota & Billing
-
-- Organization-level run quota enforcement
-- Append-only usage ledger for accurate billing
-- Real-time billing metrics and aggregation
-- Usage tracking by event type (reserved, completed, failed)
-- Plan-based limits (Free: 5 runs, Pro: 1000 runs, Enterprise: unlimited)
-
-MCP Integration
-
-- MCP server registry
-- Tool discovery
-- Permission management
-- Custom MCP server support
-
-Knowledge Base
-
-- Document ingestion
-- Vector search
-- Hybrid retrieval
-- Retrieval-Augmented Generation (RAG)
-
-Developer Experience
-
-- SDK
-- CLI
-- REST API
-- Open-source architecture
-
----
-
-Technology Stack
-
-Frontend
-
-- Next.js
-- TypeScript
-- Tailwind CSS
-- React
-
-Backend
-
-- Supabase
-- PostgreSQL
-- pgvector
-- Edge Functions
-- Realtime
-
-AI Runtime
-
-- LangGraph
-- OpenAI
-- Anthropic
-- Gemini
-
-Infrastructure
-
-- Docker
-- GitHub Actions
-- Playwright
-- k6
-
----
-
-Architecture
-
-Frontend (Next.js)
-       |
-       |
-API Layer
-       |
-       |
-Supabase
-├── PostgreSQL
-├── pgvector
-├── Auth
-├── Storage
-├── Realtime
-└── Edge Functions
-       |
-       |
-Agent Runtime
-├── LangGraph
-├── OpenAI
-├── Anthropic
-├── Gemini
-└── MCP Clients
-
----
-
-Project Structure
-
-agent-workbench/
-
+```text
 apps/
 └── web/
 
 packages/
 ├── agent-runtime/
 ├── sdk/
-├── mcp/
-├── evals/
-└── ui/
+├── mcp/      # reserved/planned workspace
+├── evals/    # reserved/planned workspace; current eval implementation lives in sdk
+└── ui/       # reserved/planned workspace
 
 infrastructure/
 └── supabase/
 
-docs/
+tests/
+```
 
-examples/
+## Runtime
 
----
+The current runtime supports:
 
-Local development
+- version-aware model and system-prompt selection
+- conversation persistence
+- memory retrieval
+- embeddings
+- tool invocation
+- multi-agent workflow routing
+- single-agent fallback
+- persisted trace events
+- token and latency telemetry
+- estimated-cost telemetry when model pricing is known
 
-See `docs/local-development.md` for hosted Supabase setup, optional local Supabase setup, and migration commands.
+Provider behavior is intentionally strict: missing OpenAI credentials fail with a configuration error unless `USE_MOCK_OPENAI=true` is explicitly set, and unsupported provider names are rejected instead of silently becoming OpenAI.
 
----
+## Evaluations and experiments
 
-Roadmap
+The evaluation system currently supports:
 
-Phase 1 — Foundation
+- dataset creation and example management
+- evaluation runs against agent versions
+- exact-match scoring
+- result persistence
+- latency, token, trace, and cost aggregation
+- A/B-style experiments between two agent versions
 
-- [ ] Monorepo setup
-- [ ] Supabase project setup
-- [ ] Authentication
-- [ ] Database schema
-- [ ] CI/CD pipeline
+Evaluation examples and experiment arms are currently executed synchronously. Moving this work onto durable queues is the next major engineering milestone.
 
-Phase 2 — Agent Runtime
+## Testing and validation
 
-- [ ] LangGraph integration
-- [ ] Model abstraction layer
-- [ ] Tool execution framework
-- [ ] Agent execution engine
+The canonical hermetic contributor gate is:
 
-Phase 3 — MCP Platform
+```bash
+pnpm validate
+```
 
-- [ ] MCP registry
-- [ ] PostgreSQL MCP server
-- [ ] Documentation MCP server
-- [ ] Vector Search MCP server
+It runs:
 
-Phase 4 — Observability
+```text
+lint
+→ typecheck
+→ build
+→ unit tests
+```
 
-- [ ] Trace collection
-- [ ] Trace explorer
-- [ ] Execution graph
-- [ ] Cost analytics
+External suites are intentionally separate:
 
-Phase 5 — Evaluation Engine
+```bash
+pnpm test:integration
+pnpm test:security
+pnpm test:reliability
+pnpm test:e2e
+```
 
-- [ ] Dataset management
-- [ ] Benchmark execution
-- [ ] Regression testing
-- [ ] Hallucination detection
+See `docs/local-development.md` for environment requirements.
 
-Phase 6 — Knowledge Platform
+## Technology stack
 
-- [ ] Document ingestion
-- [ ] Embedding generation
-- [ ] Hybrid search
-- [ ] RAG workflows
+### Frontend
 
-Phase 7 — Developer Tooling
+- Next.js
+- React
+- TypeScript
+- Tailwind CSS
 
-- [ ] SDK
+### Backend and data
+
+- Supabase
+- PostgreSQL
+- pgvector
+- Supabase Auth
+- Realtime
+
+### Runtime and testing
+
+- TypeScript agent runtime
+- OpenAI
+- Vitest
+- Playwright
+- k6
+- GitHub Actions
+
+## Roadmap
+
+The original phase-based roadmap has been retired because the repository has outgrown it. The roadmap now tracks engineering maturity.
+
+### v0.5 — Runtime Stabilization
+
+- [x] Hermetic default validation
+- [ ] Strict provider selection and configuration behavior
+- [ ] Explicit unknown-cost semantics
+- [ ] Observable workflow fallback behavior
+- [ ] Truthful capability and release documentation
+- [ ] Security validation integrated into the appropriate protected-branch lifecycle
+
+### v0.6 — Async Evaluations
+
+- [ ] Queue evaluation runs
+- [ ] Queue experiment execution
+- [ ] Per-example progress
+- [ ] Retry and recovery
+- [ ] Cancellation
+- [ ] Durable aggregation and completion semantics
+
+### v0.7 — Model Platform
+
+- [ ] Additional live providers
+- [ ] Provider-specific retry policies
+- [ ] Provider health reporting
+- [ ] Versioned pricing registry
+
+### v0.8 — Agent Tooling
+
+- [ ] Provider-native tool/function calling
+- [ ] Richer streaming
+- [ ] Stronger workflow-runtime semantics
+
+### v0.9 — Developer Platform
+
+- [ ] Public API authentication
+- [ ] API keys
 - [ ] CLI
-- [ ] Public API
-- [ ] Documentation site
+- [ ] Polished external SDK workflows
 
----
+### v1.0 — Production Release
 
-Security
+- [ ] Production deployment guarantees
+- [ ] Release and security evidence
+- [ ] Production-grade observability guarantees
+- [ ] Stable public contracts
 
-Agent Workbench is designed with production-grade security in mind.
+### Post-1.0
 
-Features include:
+- MCP expansion
+- Knowledge ingestion and RAG
+- Broader payment and commercial lifecycle support
 
-- Row Level Security (RLS)
-- Organization-based multi-tenancy
-- JWT validation
-- Audit logging
-- Rate limiting
-- Secret management through Supabase Edge Functions
+## Local development
 
----
+See `docs/local-development.md` for hosted Supabase setup, optional local Supabase setup, migrations, and test-environment requirements.
 
-Testing
+## Security
 
-Testing is a first-class concern.
+The project uses Supabase Row Level Security, organization-based multi-tenancy, server-side execution authorization, quota enforcement, and dedicated security tests. Security-sensitive external suites require configured credentials and are kept separate from hermetic contributor validation.
 
-Unit Tests
+See `SECURITY.md` for project security guidance.
 
-- Target coverage: 80%+
+## Contributing
 
-Integration Tests
+See `CONTRIBUTING.md` and run `pnpm validate` before opening a pull request.
 
-- Agent execution
-- MCP tools
-- Vector search
+## License
 
-End-to-End Tests
-
-- Create agent
-- Execute agent
-- Run evaluations
-
-Load Testing
-
-- 100 concurrent users
-- 500 concurrent users
-- 1000 concurrent users
-
----
-
-Contributing
-
-Contributions are welcome.
-
-Please read:
-
-- CONTRIBUTING.md
-- CODE_OF_CONDUCT.md
-- SECURITY.md
-
-before submitting pull requests.
-
----
-
-License
-
-Licensed under the Apache License 2.0.
-
-See the LICENSE file for details.
-
----
-
-Vision
-
-Agent Workbench aims to become the open-source platform developers use to build, evaluate, observe and deploy AI agents at scale.
-
-Built with ❤️ using Supabase, LangGraph, MCP and pgvector.
+Licensed under the Apache License 2.0. See `LICENSE` for details.
