@@ -199,8 +199,11 @@ export async function processEvaluationRunJob(job: EvaluationRunQueueJob): Promi
 
   try {
     await evaluations.executeEvaluationRun(job.runId, supabase);
-    await markEvaluationQueueJobCompleted(job.runId);
+    // Reconcile the parent experiment before completing the queue job. If
+    // reconciliation fails, a retry can cheaply resume the already-completed
+    // evaluation and retry only the orchestration step.
     await experiments.syncExperimentStatusForRun(job.runId, supabase);
+    await markEvaluationQueueJobCompleted(job.runId);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
 
