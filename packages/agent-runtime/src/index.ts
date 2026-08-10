@@ -1,4 +1,5 @@
 export * from './runAgent';
+export * from './cancellation';
 export * from './embeddings';
 export * from './memory';
 export * from './tools';
