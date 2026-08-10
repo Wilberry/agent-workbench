@@ -26,6 +26,22 @@ export class LLMToolLoopLimitError extends Error {
   }
 }
 
+export class LLMToolExecutionError extends Error {
+  code = 'LLM_TOOL_EXECUTION_FAILED';
+
+  constructor(
+    public readonly toolName: string,
+    public readonly completedToolCalls: number,
+    cause: unknown
+  ) {
+    super(
+      `Tool execution failed for ${toolName}: ${cause instanceof Error ? cause.message : String(cause)}`,
+      { cause }
+    );
+    this.name = 'LLMToolExecutionError';
+  }
+}
+
 export type ToolExecutionRecord = {
   call: LLMToolCall;
   result: unknown;
@@ -33,10 +49,7 @@ export type ToolExecutionRecord = {
   mode: 'native' | 'legacy';
 };
 
-export type LLMToolLoopResult = {
-  content: string;
-  toolsCalled: string[];
-  toolExecutions: ToolExecutionRecord[];
+export type LLMToolLoopAggregate = {
   modelIterations: number;
   prompt_tokens: number;
   completion_tokens: number;
@@ -46,6 +59,12 @@ export type LLMToolLoopResult = {
   provider_name?: string;
   model_name?: string;
   stop_reason?: LLMResponse['stop_reason'];
+};
+
+export type LLMToolLoopResult = LLMToolLoopAggregate & {
+  content: string;
+  toolsCalled: string[];
+  toolExecutions: ToolExecutionRecord[];
   legacyFallbackUsed: boolean;
 };
 
@@ -71,6 +90,10 @@ type ExecuteLLMToolLoopInput = {
   temperature?: number;
   max_tokens?: number;
   maxToolRounds?: number;
+  onModelResponse?: (
+    response: LLMResponse,
+    aggregate: LLMToolLoopAggregate
+  ) => void | Promise<void>;
   onToolExecuted?: (record: ToolExecutionRecord) => void | Promise<void>;
   complete?: Complete;
   executeTool?: ExecuteTool;
@@ -126,6 +149,7 @@ export async function executeLLMToolLoop({
   temperature = 0.7,
   max_tokens = 1200,
   maxToolRounds = 2,
+  onModelResponse,
   onToolExecuted,
   complete = chatCompletion,
   executeTool = runTool
@@ -177,6 +201,19 @@ export async function executeLLMToolLoop({
     lastModelName = response.model_name ?? lastModelName ?? model;
     lastStopReason = response.stop_reason;
 
+    const aggregate: LLMToolLoopAggregate = {
+      modelIterations,
+      prompt_tokens: promptTokens,
+      completion_tokens: completionTokens,
+      total_tokens: totalTokens,
+      estimated_cost: estimatedCost,
+      latency_ms: latencyMs,
+      provider_name: lastProviderName,
+      model_name: lastModelName,
+      stop_reason: lastStopReason
+    };
+    await onModelResponse?.(response, aggregate);
+
     const nativeCalls = response.tool_calls ?? [];
     if (nativeCalls.length > 0) {
       if (toolRounds >= maxToolRounds) {
@@ -191,13 +228,18 @@ export async function executeLLMToolLoop({
       const roundResults: ToolExecutionRecord[] = [];
       for (const call of nativeCalls) {
         const startedAt = Date.now();
-        const result = await executeTool(
-          call.name,
-          call.arguments,
-          runId,
-          organizationId,
-          executionContext
-        );
+        let result: unknown;
+        try {
+          result = await executeTool(
+            call.name,
+            call.arguments,
+            runId,
+            organizationId,
+            executionContext
+          );
+        } catch (error) {
+          throw new LLMToolExecutionError(call.name, toolExecutions.length, error);
+        }
         const record: ToolExecutionRecord = {
           call,
           result,
@@ -242,13 +284,18 @@ export async function executeLLMToolLoop({
         arguments: legacyCall.args
       };
       const startedAt = Date.now();
-      const result = await executeTool(
-        legacyCall.name,
-        legacyCall.args,
-        runId,
-        organizationId,
-        executionContext
-      );
+      let result: unknown;
+      try {
+        result = await executeTool(
+          legacyCall.name,
+          legacyCall.args,
+          runId,
+          organizationId,
+          executionContext
+        );
+      } catch (error) {
+        throw new LLMToolExecutionError(legacyCall.name, toolExecutions.length, error);
+      }
       const record: ToolExecutionRecord = {
         call: syntheticCall,
         result,
@@ -277,15 +324,7 @@ export async function executeLLMToolLoop({
       content: response.content,
       toolsCalled,
       toolExecutions,
-      modelIterations,
-      prompt_tokens: promptTokens,
-      completion_tokens: completionTokens,
-      total_tokens: totalTokens,
-      estimated_cost: estimatedCost,
-      latency_ms: latencyMs,
-      provider_name: lastProviderName,
-      model_name: lastModelName,
-      stop_reason: lastStopReason,
+      ...aggregate,
       legacyFallbackUsed
     };
   }
