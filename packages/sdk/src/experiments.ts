@@ -94,7 +94,10 @@ export const experiments = {
       experiment = await this.getExperiment(payload.experimentId, supabase);
       if (!experiment) throw new Error('Experiment not found');
 
-      if (experiment.status === 'running' && experiment.run_a_id && experiment.run_b_id) {
+      // Once both evaluation run IDs are persisted, execution is idempotent.
+      // Repeated start requests must never reset completed or failed experiments
+      // back to running or create duplicate evaluation runs.
+      if (experiment.run_a_id && experiment.run_b_id) {
         const [runA, runB] = await Promise.all([
           evaluations.getEvaluationRun(experiment.run_a_id, supabase),
           evaluations.getEvaluationRun(experiment.run_b_id, supabase)
