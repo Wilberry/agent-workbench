@@ -5,6 +5,7 @@ import type { LLMMessage } from './llm/types';
 import { resolveExecutionToolDefinitions } from './tools';
 import {
   executeLLMToolLoop,
+  LLMToolContinuationError,
   LLMToolExecutionError,
   LLMToolLoopLimitError,
   LLMToolNotAllowedError
@@ -72,6 +73,7 @@ function isNonRetryableToolContractError(error: unknown): boolean {
   return error instanceof LLMToolNotAllowedError ||
     error instanceof LLMToolArgumentsError ||
     error instanceof LLMToolExecutionError ||
+    error instanceof LLMToolContinuationError ||
     error instanceof LLMToolLoopLimitError;
 }
 
