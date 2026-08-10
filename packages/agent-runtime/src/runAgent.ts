@@ -416,6 +416,7 @@ export async function runAgent({
     }
   });
 
+  throwIfAborted(signal);
   const { data: assistantRow, error: assistantError } = await supabase
     .from('messages')
     .insert([{ conversation_id: conversationId, role: 'assistant', content: finalAssistantResponse }])
@@ -426,9 +427,12 @@ export async function runAgent({
     console.error('Failed to persist assistant message:', assistantError);
   } else {
     try {
+      throwIfAborted(signal);
       const assistantEmbedding = await generateEmbedding(finalAssistantResponse);
+      throwIfAborted(signal);
       await supabase.from('messages').update({ embedding: assistantEmbedding }).eq('id', (assistantRow as Pick<Message, 'id'>).id);
     } catch (error) {
+      if (isAgentExecutionCancelledError(error)) throw error;
       console.error('Failed to generate assistant embedding:', error);
     }
   }
@@ -514,7 +518,9 @@ export function runAgentEventStream(
           emit({ type: 'run_end', content });
         } catch (error) {
           if (isAgentExecutionCancelledError(error)) {
-            const reason = error.message || 'Agent execution cancelled';
+            const reason = error instanceof Error && error.message
+              ? error.message
+              : 'Agent execution cancelled';
             await persistCancellation(input.runId, reason);
             emit({ type: 'run_cancelled', reason });
           } else {
