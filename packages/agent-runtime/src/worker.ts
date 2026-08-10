@@ -5,24 +5,37 @@ import type { LLMMessage } from './llm/types';
 import { resolveExecutionToolDefinitions } from './tools';
 import {
   executeLLMToolLoop,
+  LLMToolCheckpointError,
   LLMToolContinuationError,
   LLMToolExecutionError,
   LLMToolLoopLimitError,
   LLMToolNotAllowedError
 } from './toolExecution';
+import {
+  AgentExecutionCancelledError,
+  isAgentExecutionCancelledError,
+  registerActiveRun,
+  throwIfAborted
+} from './cancellation';
 import { generateEmbedding } from './embeddings';
 import { randomUUID } from 'crypto';
 import {
   type AgentRunQueueJob,
-  persistExecutionStep,
-  markRunCompleted,
-  markRunFailed,
+  clearRunCheckpoint,
+  getRunCheckpoint,
+  incrementAttemptsAndMaybeDead,
+  markQueueJobCancelled,
   markQueueJobCompleted,
   markQueueJobFailed,
-  incrementAttemptsAndMaybeDead,
+  markRunCancelled,
+  markRunCompleted,
+  markRunFailed,
+  persistExecutionStep,
+  persistRunCheckpoint,
+  rebuildWorkflowEpisode,
   reclaimStaleJobs,
-  updateRunTelemetry,
   setProcessing,
+  updateRunTelemetry,
   type ExecutionStep
 } from './queue';
 import { persistTraceEvent } from './tracing';
@@ -45,10 +58,7 @@ function roleDescription(role: string): string {
 function formatMemoryContext(
   memories: Array<{ role: 'user' | 'assistant'; content: string; similarity: number }> = []
 ): string {
-  if (memories.length === 0) {
-    return 'No relevant memory found for this request.';
-  }
-
+  if (memories.length === 0) return 'No relevant memory found for this request.';
   return memories
     .map(
       (memory) =>
@@ -65,23 +75,93 @@ async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function getExponentialBackoff(retryCount: number): number {
-  return Math.pow(2, retryCount) * 1000; // 1s, 2s, 4s
+async function sleepWithSignal(ms: number, signal: AbortSignal): Promise<void> {
+  throwIfAborted(signal);
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new AgentExecutionCancelledError(
+        typeof signal.reason === 'string' && signal.reason.trim()
+          ? signal.reason.trim()
+          : 'Agent run cancelled'
+      ));
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
 }
 
-function isNonRetryableToolContractError(error: unknown): boolean {
+function getExponentialBackoff(retryCount: number): number {
+  return Math.pow(2, retryCount) * 1000;
+}
+
+function isToolContractError(error: unknown): boolean {
   return error instanceof LLMToolNotAllowedError ||
     error instanceof LLMToolArgumentsError ||
     error instanceof LLMToolExecutionError ||
     error instanceof LLMToolContinuationError ||
+    error instanceof LLMToolCheckpointError ||
     error instanceof LLMToolLoopLimitError;
 }
 
-// NOTE: Step-level persistence and realtime broadcasts are handled by `persistExecutionStep` in queue.ts
+function isNonRetryableToolContractError(error: unknown): boolean {
+  if (error instanceof LLMToolContinuationError) return !error.resumeSafe;
+  return error instanceof LLMToolNotAllowedError ||
+    error instanceof LLMToolArgumentsError ||
+    error instanceof LLMToolExecutionError ||
+    error instanceof LLMToolCheckpointError ||
+    error instanceof LLMToolLoopLimitError;
+}
+
+function lastCompletedOutput(trace: unknown, currentStep: number): string {
+  if (!Array.isArray(trace) || currentStep <= 0) return '';
+  const completed = trace.filter((entry: any) =>
+    entry?.status === 'completed' &&
+    entry?.step !== 'checkpoint' &&
+    entry?.step !== 'tool' &&
+    entry?.step !== 'memory' &&
+    entry?.step !== 'error' &&
+    typeof entry?.output === 'string'
+  );
+  const indexed = completed
+    .filter((entry: any) => typeof entry?.metadata?.stepIndex === 'number' && entry.metadata.stepIndex < currentStep)
+    .sort((a: any, b: any) => a.metadata.stepIndex - b.metadata.stepIndex);
+  const selected = indexed.length > 0 ? indexed : completed.slice(0, currentStep);
+  return selected[selected.length - 1]?.output ?? '';
+}
+
+async function assertRunActive(
+  supabase: ReturnType<typeof createServerSupabaseClient>,
+  runId: string,
+  signal: AbortSignal
+): Promise<void> {
+  throwIfAborted(signal);
+  const runtimeClient = supabase as any;
+  const { data: run, error } = await runtimeClient
+    .from('agent_runs')
+    .select('status,cancellation_reason')
+    .eq('id', runId)
+    .single();
+  if (error || !run) throw error ?? new Error('Agent run not found');
+  if (String(run.status) === 'cancelled') {
+    throw new AgentExecutionCancelledError(
+      typeof run.cancellation_reason === 'string' && run.cancellation_reason.trim()
+        ? run.cancellation_reason
+        : 'Agent run cancelled'
+    );
+  }
+  throwIfAborted(signal);
+}
 
 export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
   const { runId, message, workflow, memories } = job;
   const supabase = createServerSupabaseClient();
+  const runtimeClient = supabase as any;
+  const executionController = new AbortController();
+  const unregisterActive = registerActiveRun(runId, executionController);
 
   const persistEvent = async (eventType: string, payload: unknown) => {
     void persistTraceEvent(runId, eventType, payload).catch((err) => {
@@ -92,18 +172,22 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
   try {
     setProcessing(runId, true);
 
-    const { data: existingRun, error: fetchError } = await supabase
+    const { data: existingRun, error: fetchError } = await runtimeClient
       .from('agent_runs')
-      .select('execution_trace, current_step, status, organization_id, agent_version_id')
+      .select('execution_trace,current_step,status,organization_id,agent_version_id,input_tokens,output_tokens,total_tokens,estimated_cost,latency_ms,provider_name,model_name,cancellation_reason')
       .eq('id', runId)
       .single();
 
-    if (fetchError) {
-      throw new Error(`Failed to fetch run state: ${fetchError.message}`);
+    if (fetchError || !existingRun) {
+      throw new Error(`Failed to fetch run state: ${fetchError?.message ?? 'not found'}`);
+    }
+    if (String(existingRun.status) === 'cancelled') {
+      await markQueueJobCancelled(runId, existingRun.cancellation_reason ?? 'Cancelled');
+      return;
     }
 
-    let currentStep = existingRun?.current_step || 0;
-    const pinnedAgentVersionId = existingRun?.agent_version_id ?? null;
+    let currentStep = Number(existingRun.current_step ?? 0);
+    const pinnedAgentVersionId = existingRun.agent_version_id ?? null;
 
     const { data: conversation, error: conversationError } = await supabase
       .from('conversations')
@@ -111,8 +195,7 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
       .eq('id', job.conversationId)
       .single();
 
-    const organizationId = existingRun?.organization_id ?? null;
-
+    const organizationId = existingRun.organization_id ?? null;
     if (conversationError || !conversation) {
       throw new Error(`Conversation not found for id ${job.conversationId}`);
     }
@@ -132,12 +215,8 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
           if (pinnedVersion.system_prompt) {
             selectedSystemPrompt = `Agent prompt:\n${pinnedVersion.system_prompt}\n\n`;
           }
-          if (pinnedVersion.model) {
-            selectedModel = pinnedVersion.model;
-          }
-          if (pinnedVersion.provider) {
-            selectedProvider = normalizeProviderName(pinnedVersion.provider);
-          }
+          if (pinnedVersion.model) selectedModel = pinnedVersion.model;
+          if (pinnedVersion.provider) selectedProvider = normalizeProviderName(pinnedVersion.provider);
           if (Array.isArray(pinnedVersion.workflow) && pinnedVersion.workflow.length > 0) {
             versionWorkflow = pinnedVersion.workflow;
           }
@@ -162,40 +241,53 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
       client: supabase
     });
 
+    await assertRunActive(supabase, runId, executionController.signal);
     void persistEvent('run_started', {
       workflow: effectiveWorkflow,
       message,
       organizationId,
       provider: agentProvider,
       model: agentModel,
-      tools: availableTools.map((tool) => tool.name)
+      tools: availableTools.map((tool) => tool.name),
+      resumed_from_step: currentStep
     });
 
-    await supabase.from('agent_runs').update({ status: 'running' }).eq('id', runId);
+    const { data: claimedRun, error: runningError } = await runtimeClient
+      .from('agent_runs')
+      .update({ status: 'running' })
+      .eq('id', runId)
+      .in('status', ['pending', 'running'])
+      .select('id')
+      .maybeSingle();
+    if (runningError) throw runningError;
+    if (!claimedRun) {
+      await assertRunActive(supabase, runId, executionController.signal);
+      throw new Error('Agent run is not executable');
+    }
 
     const memoryContext = formatMemoryContext(memories);
-    const episode: string[] = [];
-    let lastAgentOutput = '';
-    let totalInputTokens = 0;
-    let totalOutputTokens = 0;
-    let totalTokens = 0;
-    let totalEstimatedCost = 0;
-    let totalLatencyMs = 0;
-    let lastProviderName: string | undefined;
-    let lastModelName: string | undefined;
+    const episode = rebuildWorkflowEpisode(existingRun.execution_trace, currentStep);
+    let lastAgentOutput = lastCompletedOutput(existingRun.execution_trace, currentStep);
+    let totalInputTokens = Number(existingRun.input_tokens ?? 0);
+    let totalOutputTokens = Number(existingRun.output_tokens ?? 0);
+    let totalTokens = Number(existingRun.total_tokens ?? 0);
+    let totalEstimatedCost = Number(existingRun.estimated_cost ?? 0);
+    let totalLatencyMs = Number(existingRun.latency_ms ?? 0);
+    let lastProviderName: string | undefined = existingRun.provider_name ?? undefined;
+    let lastModelName: string | undefined = existingRun.model_name ?? undefined;
 
     for (let stepIndex = currentStep; stepIndex < effectiveWorkflow.length; stepIndex += 1) {
+      await assertRunActive(supabase, runId, executionController.signal);
       const role = effectiveWorkflow[stepIndex]!;
       const toolsCalled: string[] = [];
       let stepFailed = false;
       let stepError: string | null = null;
       let stepCause: unknown = null;
+      const resumeCheckpoint = getRunCheckpoint(existingRun.execution_trace, stepIndex, role);
 
-      // Non-provider failures retain the legacy step retry loop. Provider
-      // transport failures already exhausted their bounded HTTP retries and
-      // are delegated to the durable queue layer below.
       for (let retryAttempt = 0; retryAttempt <= MAX_RETRIES; retryAttempt += 1) {
         try {
+          await assertRunActive(supabase, runId, executionController.signal);
           const rolePrompt: LLMMessage[] = [
             {
               role: 'system',
@@ -207,11 +299,11 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
             }
           ];
 
-          const inputBeforeStep = totalInputTokens;
-          const outputBeforeStep = totalOutputTokens;
-          const tokensBeforeStep = totalTokens;
-          const costBeforeStep = totalEstimatedCost;
-          const latencyBeforeStep = totalLatencyMs;
+          const inputBeforeStep = Math.max(0, totalInputTokens - Number(resumeCheckpoint?.prompt_tokens ?? 0));
+          const outputBeforeStep = Math.max(0, totalOutputTokens - Number(resumeCheckpoint?.completion_tokens ?? 0));
+          const tokensBeforeStep = Math.max(0, totalTokens - Number(resumeCheckpoint?.total_tokens ?? 0));
+          const costBeforeStep = Math.max(0, totalEstimatedCost - Number(resumeCheckpoint?.estimated_cost ?? 0));
+          const latencyBeforeStep = Math.max(0, totalLatencyMs - Number(resumeCheckpoint?.latency_ms ?? 0));
 
           const roleResult = await executeLLMToolLoop({
             provider: agentProvider,
@@ -224,6 +316,10 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
             agentId: conversation.agent_id,
             conversationId: job.conversationId,
             maxToolRounds: 2,
+            signal: executionController.signal,
+            resumeFrom: resumeCheckpoint,
+            assertActive: () => assertRunActive(supabase, runId, executionController.signal),
+            onCheckpoint: (checkpoint) => persistRunCheckpoint(runId, stepIndex, role, checkpoint),
             async onModelResponse(_response, aggregate) {
               lastProviderName = aggregate.provider_name ?? agentProvider;
               lastModelName = aggregate.model_name ?? agentModel;
@@ -250,6 +346,7 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
             }
           });
 
+          await assertRunActive(supabase, runId, executionController.signal);
           const finalOutput = roleResult.content;
           toolsCalled.push(...roleResult.toolsCalled);
           totalInputTokens = inputBeforeStep + roleResult.prompt_tokens;
@@ -262,10 +359,6 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
 
           const stepTokens = roleResult.total_tokens;
           const stepLatencyMs = roleResult.latency_ms;
-
-          episode.push(`${role.toUpperCase()} OUTPUT:\n${finalOutput}`);
-          lastAgentOutput = finalOutput;
-
           const execStep: ExecutionStep = {
             id: randomUUID(),
             run_id: runId,
@@ -278,11 +371,17 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
               model: lastModelName,
               tokens: stepTokens,
               toolName: toolsCalled[0],
-              latency_ms: stepLatencyMs
+              latency_ms: stepLatencyMs,
+              stepIndex,
+              role
             }
           };
 
           await persistExecutionStep(runId, execStep);
+          await clearRunCheckpoint(runId, stepIndex);
+
+          episode.push(`${role.toUpperCase()} OUTPUT:\n${finalOutput}`);
+          lastAgentOutput = finalOutput;
           void persistEvent('step_completed', {
             stepIndex,
             step: role,
@@ -299,6 +398,8 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
           stepFailed = false;
           break;
         } catch (error) {
+          if (isAgentExecutionCancelledError(error)) throw error;
+
           stepCause = error;
           stepError = error instanceof Error ? error.message : String(error);
           stepFailed = true;
@@ -306,6 +407,14 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
           if (isProviderRequestError(error)) {
             console.error(
               `Step ${stepIndex} (${role}) provider request failed after ${error.attempts} transport attempt(s):`,
+              stepError
+            );
+            break;
+          }
+
+          if (error instanceof LLMToolContinuationError) {
+            console.error(
+              `Step ${stepIndex} (${role}) provider continuation failed; resumeSafe=${error.resumeSafe}:`,
               stepError
             );
             break;
@@ -321,7 +430,7 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
             console.log(
               `Step ${stepIndex} (${role}) failed, retrying in ${backoffMs}ms (attempt ${retryAttempt + 1}/${MAX_RETRIES})`
             );
-            await sleep(backoffMs);
+            await sleepWithSignal(backoffMs, executionController.signal);
           } else {
             console.error(`Step ${stepIndex} (${role}) failed after ${MAX_RETRIES} retries:`, stepError);
           }
@@ -336,7 +445,8 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
           provider: lastProviderName ?? agentProvider,
           model: lastModelName ?? agentModel,
           toolName: toolsCalled[0] ?? null,
-          toolsCalled
+          toolsCalled,
+          resumable: stepCause instanceof LLMToolContinuationError ? stepCause.resumeSafe : false
         });
 
         const errorExecStep: ExecutionStep = {
@@ -351,14 +461,18 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
           metadata: {
             model: lastModelName ?? agentModel,
             tokens: undefined,
-            toolName: toolsCalled[0]
+            toolName: toolsCalled[0],
+            stepIndex,
+            role
           }
         };
 
         await persistExecutionStep(runId, errorExecStep);
-        // persistExecutionStep keeps the failed attempt in the trace, but its
-        // legacy cursor update must not make durable recovery skip this role.
-        await supabase.from('agent_runs').update({ current_step: stepIndex }).eq('id', runId);
+        await runtimeClient
+          .from('agent_runs')
+          .update({ current_step: stepIndex })
+          .eq('id', runId)
+          .neq('status', 'cancelled');
 
         if (stepCause instanceof Error) throw stepCause;
         throw new Error(`Workflow failed at step ${stepIndex}: ${stepError}`);
@@ -366,6 +480,7 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
       currentStep = stepIndex + 1;
     }
 
+    await assertRunActive(supabase, runId, executionController.signal);
     if (lastAgentOutput) {
       const { data: assistantRow, error: assistantError } = await supabase
         .from('messages')
@@ -385,6 +500,7 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
       }
     }
 
+    await assertRunActive(supabase, runId, executionController.signal);
     void persistEvent('run_completed', {
       total_steps: effectiveWorkflow.length,
       total_tokens: totalTokens,
@@ -397,10 +513,21 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
     await markQueueJobCompleted(runId);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
+
+    if (isAgentExecutionCancelledError(error)) {
+      void persistEvent('run_cancelled', { reason: errorMessage });
+      await Promise.allSettled([
+        markRunCancelled(runId, errorMessage),
+        markQueueJobCancelled(runId, errorMessage)
+      ]);
+      return;
+    }
+
     void persistEvent('run_failed', {
       error: errorMessage,
       provider: isProviderRequestError(error) ? error.provider : undefined,
-      request_id: isProviderRequestError(error) ? error.requestId : undefined
+      request_id: isProviderRequestError(error) ? error.requestId : undefined,
+      resumable: error instanceof LLMToolContinuationError ? error.resumeSafe : undefined
     });
     console.error('Workflow execution failed:', errorMessage);
 
@@ -425,20 +552,26 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
     }
 
     try {
-      const { attempts, maxAttempts, isDead } = await incrementAttemptsAndMaybeDead(runId, errorMessage);
+      const { attempts, maxAttempts, isDead, wasCancelled } = await incrementAttemptsAndMaybeDead(runId, errorMessage);
+      if (wasCancelled) {
+        await markRunCancelled(runId, errorMessage);
+        return;
+      }
       if (isDead) {
         await markRunFailed(runId, `Job failed after ${attempts}/${maxAttempts} attempts: ${errorMessage}`);
       } else {
-        await supabase
+        await runtimeClient
           .from('agent_runs')
           .update({ status: 'pending', error_message: null })
-          .eq('id', runId);
+          .eq('id', runId)
+          .neq('status', 'cancelled');
       }
     } catch (qErr) {
       console.warn('Failed to update job attempts/queue state:', qErr);
     }
     throw error;
   } finally {
+    unregisterActive();
     setProcessing(runId, false);
   }
 }
