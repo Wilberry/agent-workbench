@@ -202,6 +202,7 @@ export async function runAgent({
         systemPrompt: selectedSystemPrompt,
         runId,
         organizationId: agent.organization_id,
+        ownerUserId,
         tools: availableTools
       }, selectedModel, selectedProvider);
 
@@ -250,6 +251,7 @@ export async function runAgent({
       tools: availableTools,
       runId,
       organizationId: agent.organization_id,
+      ownerUserId,
       maxToolRounds: 2,
       onToolExecuted(record) {
         void persistEvent('tool_call', {
