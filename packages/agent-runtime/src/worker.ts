@@ -148,10 +148,11 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
     const agentModel = selectedModel;
     const agentProvider = selectedProvider;
     const effectiveWorkflow = versionWorkflow ?? job.workflow;
+    const ownerUserId = agent?.user_id ?? null;
     const availableTools = await resolveExecutionToolDefinitions({
       versionTools,
       organizationId,
-      ownerUserId: agent?.user_id ?? null,
+      ownerUserId,
       client: supabase
     });
 
@@ -207,6 +208,7 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
             tools: availableTools,
             runId,
             organizationId,
+            ownerUserId,
             maxToolRounds: 2,
             onToolExecuted(record) {
               void persistEvent('tool_call', {
