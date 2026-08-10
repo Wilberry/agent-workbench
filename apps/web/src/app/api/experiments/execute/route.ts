@@ -3,21 +3,27 @@ import { headers, cookies } from 'next/headers';
 import { createRouteHandlerSupabaseClient } from '@supabase/auth-helpers-nextjs';
 import { createServerSupabaseClient, experiments } from '@agent-workbench/sdk';
 
+function errorStatus(message: string) {
+  if (message.startsWith('Not authorized')) return 403;
+  if (message.endsWith('not found')) return 404;
+  if (message.includes('already cancelled') || message.includes('already completed') || message.includes('already failed')) return 409;
+  if (message.includes('must match') || message.includes('does not belong')) return 400;
+  return 500;
+}
+
 async function handlePost(request: NextRequest, authClient = createRouteHandlerSupabaseClient({ headers, cookies })) {
   try {
     const body = await request.json();
     const { data: user } = await authClient.auth.getUser();
     const authUser = user?.user ?? null;
     if (!authUser) return new Response(JSON.stringify({ error: 'Not authenticated' }), { status: 401 });
+    if (!body.experimentId) {
+      return new Response(JSON.stringify({ error: 'experimentId is required' }), { status: 400 });
+    }
 
     const supabase = createServerSupabaseClient();
-
-    const experiment = await experiments.getExperiment(body.experimentId, supabase);
-    if (!experiment) return new Response(JSON.stringify({ error: 'Experiment not found' }), { status: 404 });
-
     const executedExperiment = await experiments.executeExperiment(authUser.id, {
-      experimentId: experiment.id,
-      organizationId: experiment.organization_id ?? null
+      experimentId: body.experimentId
     }, supabase);
 
     return new Response(JSON.stringify({ experiment: executedExperiment.experiment, runA: executedExperiment.runA, runB: executedExperiment.runB }), {
@@ -25,7 +31,8 @@ async function handlePost(request: NextRequest, authClient = createRouteHandlerS
       headers: { 'Content-Type': 'application/json' }
     });
   } catch (err) {
-    return new Response(JSON.stringify({ error: (err as Error).message }), { status: 500 });
+    const message = (err as Error).message;
+    return new Response(JSON.stringify({ error: message }), { status: errorStatus(message) });
   }
 }
 
