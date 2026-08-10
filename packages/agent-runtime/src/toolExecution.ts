@@ -42,6 +42,21 @@ export class LLMToolExecutionError extends Error {
   }
 }
 
+export class LLMToolContinuationError extends Error {
+  code = 'LLM_TOOL_CONTINUATION_FAILED';
+
+  constructor(
+    public readonly completedToolCalls: number,
+    cause: unknown
+  ) {
+    super(
+      `Provider continuation failed after ${completedToolCalls} completed tool call(s): ${cause instanceof Error ? cause.message : String(cause)}`,
+      { cause }
+    );
+    this.name = 'LLMToolContinuationError';
+  }
+}
+
 export type ToolExecutionRecord = {
   call: LLMToolCall;
   result: unknown;
@@ -181,15 +196,23 @@ export async function executeLLMToolLoop({
   let legacyFallbackUsed = false;
 
   while (true) {
-    const response = await complete({
-      provider,
-      model,
-      messages: currentMessages,
-      temperature,
-      max_tokens,
-      tools: tools.length > 0 ? tools : undefined,
-      tool_choice: tools.length > 0 ? 'auto' : undefined
-    });
+    let response: LLMResponse;
+    try {
+      response = await complete({
+        provider,
+        model,
+        messages: currentMessages,
+        temperature,
+        max_tokens,
+        tools: tools.length > 0 ? tools : undefined,
+        tool_choice: tools.length > 0 ? 'auto' : undefined
+      });
+    } catch (error) {
+      if (toolExecutions.length > 0) {
+        throw new LLMToolContinuationError(toolExecutions.length, error);
+      }
+      throw error;
+    }
 
     modelIterations += 1;
     promptTokens += response.prompt_tokens;
