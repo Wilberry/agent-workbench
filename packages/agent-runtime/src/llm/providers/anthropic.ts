@@ -11,6 +11,7 @@ import { getPricingProvider, UnknownModelPricingError } from '../pricing';
 import { requestWithProviderReliability } from '../http';
 import { streamProviderResponseWithReliability } from '../httpStream';
 import { SSEDataParser } from '../sse';
+import { LLMStreamProtocolError } from '../stream';
 import { normalizeToolCall } from '../tooling';
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
@@ -271,6 +272,7 @@ export const anthropicProvider: LLMProvider = {
     const toolCalls = new Map<number, LLMToolCall>();
     const start = Date.now();
     let started = false;
+    let terminalReceived = false;
     let content = '';
     let textBlocksSeen = 0;
     let modelName = request.model;
@@ -282,6 +284,20 @@ export const anthropicProvider: LLMProvider = {
       if (!payloadText) return;
       const payload = JSON.parse(payloadText);
       const eventType = payload?.type;
+
+      if (eventType === 'error') {
+        throw new LLMStreamProtocolError(
+          'anthropic',
+          typeof payload?.error?.message === 'string'
+            ? payload.error.message
+            : 'provider emitted an error event'
+        );
+      }
+
+      if (eventType === 'message_stop') {
+        terminalReceived = true;
+        return;
+      }
 
       if (eventType === 'message_start') {
         modelName = typeof payload?.message?.model === 'string' ? payload.message.model : modelName;
@@ -315,14 +331,18 @@ export const anthropicProvider: LLMProvider = {
         }
 
         if (block?.type === 'tool_use') {
-          const initialInput = block?.input && Object.keys(block.input).length > 0
-            ? JSON.stringify(block.input)
-            : '';
+          const blockInput = block?.input;
+          const hasInitialInput = Boolean(
+            blockInput &&
+            typeof blockInput === 'object' &&
+            !Array.isArray(blockInput) &&
+            Object.keys(blockInput).length > 0
+          );
           const accumulator: AnthropicToolAccumulator = {
             index,
             id: String(block?.id ?? ''),
             name: String(block?.name ?? ''),
-            argumentsText: initialInput,
+            argumentsText: hasInitialInput ? JSON.stringify(blockInput) : '',
             completed: false
           };
           toolAccumulators.set(index, accumulator);
@@ -348,7 +368,10 @@ export const anthropicProvider: LLMProvider = {
         if (delta?.type === 'input_json_delta' && typeof delta?.partial_json === 'string') {
           const accumulator = toolAccumulators.get(index);
           if (!accumulator) {
-            throw new Error(`Anthropic emitted tool arguments before tool start at index ${index}`);
+            throw new LLMStreamProtocolError(
+              'anthropic',
+              `tool arguments arrived before tool start at index ${index}`
+            );
           }
           accumulator.argumentsText += delta.partial_json;
           yield {
@@ -402,6 +425,10 @@ export const anthropicProvider: LLMProvider = {
 
     for (const payloadText of parser.finish()) {
       yield* processPayload(payloadText);
+    }
+
+    if (!terminalReceived) {
+      throw new LLMStreamProtocolError('anthropic', 'stream ended before message_stop');
     }
 
     if (!started) {
