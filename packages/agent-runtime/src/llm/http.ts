@@ -153,6 +153,9 @@ export async function requestWithProviderReliability(
         ...init,
         signal: controller.signal
       });
+      // The timeout bounds only the provider request itself. Do not leave the
+      // per-attempt timer running while honoring Retry-After/backoff delays.
+      clearTimeout(timeout);
 
       if (response.ok) return response;
 
