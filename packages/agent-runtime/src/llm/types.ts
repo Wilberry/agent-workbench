@@ -24,7 +24,7 @@ export type LLMResponse = {
   completion_tokens: number;
   total_tokens: number;
   latency_ms: number;
-  estimated_cost: number;
+  estimated_cost: number | null;
   raw?: unknown;
 };
 
@@ -43,5 +43,5 @@ export type ModelPricing = {
 
 export type PricingProvider = {
   getModelPricing(model: string): ModelPricing | null;
-  estimateCost(model: string, usage: LLMUsage): number;
+  estimateCost(model: string, usage: LLMUsage): number | null;
 };
