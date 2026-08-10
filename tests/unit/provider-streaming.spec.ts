@@ -44,10 +44,9 @@ function chunkedResponse(parts: string[], status = 200, headers: HeadersInit = {
       controller.close();
     }
   });
-  return new Response(body, {
-    status,
-    headers: { 'Content-Type': 'text/event-stream', ...headers }
-  });
+  const responseHeaders = new Headers(headers);
+  responseHeaders.set('Content-Type', 'text/event-stream');
+  return new Response(body, { status, headers: responseHeaders });
 }
 
 async function collect(events: AsyncIterable<LLMStreamEvent>): Promise<LLMStreamEvent[]> {
@@ -69,7 +68,7 @@ describe('OpenAI provider streaming', () => {
     ].join('');
 
     const parts = [wire.slice(0, 37), wire.slice(37, 121), wire.slice(121, 284), wire.slice(284)];
-    const fetchMock = vi.fn(async () => chunkedResponse(parts));
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => chunkedResponse(parts));
     vi.stubGlobal('fetch', fetchMock);
 
     const events = await collect(streamChatCompletion({
@@ -141,7 +140,7 @@ describe('OpenAI provider streaming', () => {
       })
     }));
 
-    const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body));
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
     expect(body.stream).toBe(true);
     expect(body.stream_options).toEqual({ include_usage: true });
     expect(body.tool_choice).toBe('required');
@@ -237,7 +236,7 @@ describe('Anthropic provider streaming', () => {
     ].join('');
 
     const parts = [wire.slice(0, 19), wire.slice(19, 203), wire.slice(203, 421), wire.slice(421)];
-    const fetchMock = vi.fn(async () => chunkedResponse(parts));
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => chunkedResponse(parts));
     vi.stubGlobal('fetch', fetchMock);
 
     const events = await collect(streamChatCompletion({
@@ -284,7 +283,7 @@ describe('Anthropic provider streaming', () => {
       })
     }));
 
-    const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body));
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
     expect(body.stream).toBe(true);
     expect(body.tool_choice).toEqual({ type: 'any' });
   });
