@@ -657,7 +657,8 @@ async function runAgentForEvaluation(
   const runtimeModule: any = await (eval('import("@agent-workbench/agent-runtime")'));
   const runMultiAgentWorkflow = runtimeModule.runMultiAgentWorkflow as (
     input: any,
-    model?: string
+    model?: string,
+    provider?: string
   ) => Promise<{ message: string; trace?: any }>;
 
   const result = await runMultiAgentWorkflow(
@@ -668,7 +669,8 @@ async function runAgentForEvaluation(
       workflow: agentVersion.workflow,
       systemPrompt: agentVersion.system_prompt
     },
-    agentVersion.model
+    agentVersion.model,
+    agentVersion.provider ?? agent.provider ?? 'openai'
   );
 
   return { text: result.message, trace: result.trace ?? {} };
