@@ -109,7 +109,7 @@ export const anthropicProvider: LLMProvider = {
     );
     const latency_ms = Date.now() - start;
 
-    const payload = await response.json();
+    const payload = JSON.parse(response.body);
     const usage = normalizeUsage(payload);
     const modelName = payload?.model ?? request.model;
     const estimated_cost = pricingProvider.estimateCost(modelName, usage, 'anthropic');
