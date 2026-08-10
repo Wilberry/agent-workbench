@@ -72,6 +72,22 @@ export class LLMProviderTimeoutError extends LLMProviderRequestError {
   }
 }
 
+export function isProviderRequestError(error: unknown): error is LLMProviderRequestError {
+  if (error instanceof LLMProviderRequestError) return true;
+  if (!error || typeof error !== 'object') return false;
+
+  const candidate = error as {
+    code?: unknown;
+    retryable?: unknown;
+    provider?: unknown;
+  };
+  return (
+    (candidate.code === 'LLM_PROVIDER_REQUEST_ERROR' || candidate.code === 'LLM_PROVIDER_TIMEOUT') &&
+    typeof candidate.retryable === 'boolean' &&
+    typeof candidate.provider === 'string'
+  );
+}
+
 function providerDisplayName(provider: string): string {
   if (provider === 'openai') return 'OpenAI';
   if (provider === 'anthropic') return 'Anthropic';
