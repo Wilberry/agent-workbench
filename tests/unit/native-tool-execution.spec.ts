@@ -23,11 +23,7 @@ const searchTool: LLMToolDefinition = {
 const infoTool: LLMToolDefinition = {
   name: 'get_agent_info',
   description: 'Get agent information.',
-  input_schema: {
-    type: 'object',
-    properties: { agentId: { type: 'string' } },
-    required: ['agentId']
-  }
+  input_schema: { type: 'object', properties: {} }
 };
 
 function response(overrides: Partial<LLMResponse>): LLMResponse {
@@ -51,7 +47,7 @@ describe('shared native tool execution loop', () => {
         stop_reason: 'tool_use',
         tool_calls: [
           { id: 'call_1', name: 'search_memory', arguments: { query: 'alpha' } },
-          { id: 'call_2', name: 'get_agent_info', arguments: { agentId: 'agent-1' } }
+          { id: 'call_2', name: 'get_agent_info', arguments: {} }
         ]
       }))
       .mockResolvedValueOnce(response({
@@ -70,6 +66,9 @@ describe('shared native tool execution loop', () => {
       model: 'gpt-4o-mini',
       messages: [{ role: 'user', content: 'Use the tools.' }],
       tools: [searchTool, infoTool],
+      ownerUserId: 'owner-1',
+      agentId: 'agent-1',
+      conversationId: 'conversation-1',
       complete,
       executeTool
     });
@@ -81,6 +80,16 @@ describe('shared native tool execution loop', () => {
     expect(result.estimated_cost).toBeCloseTo(0.003);
     expect(result.legacyFallbackUsed).toBe(false);
     expect(executeTool).toHaveBeenCalledTimes(2);
+    expect(executeTool.mock.calls[0]?.[4]).toEqual({
+      ownerUserId: 'owner-1',
+      agentId: 'agent-1',
+      conversationId: 'conversation-1'
+    });
+    expect(executeTool.mock.calls[1]?.[4]).toEqual({
+      ownerUserId: 'owner-1',
+      agentId: 'agent-1',
+      conversationId: 'conversation-1'
+    });
 
     const secondRequest = complete.mock.calls[1]![0];
     expect(secondRequest.messages).toEqual(expect.arrayContaining([
@@ -109,6 +118,7 @@ describe('shared native tool execution loop', () => {
       model: 'gpt-4o-mini',
       messages: [{ role: 'user', content: 'Use fallback.' }],
       tools: [searchTool],
+      conversationId: 'conversation-legacy',
       complete,
       executeTool
     });
@@ -116,6 +126,11 @@ describe('shared native tool execution loop', () => {
     expect(result.content).toBe('Legacy fallback completed.');
     expect(result.legacyFallbackUsed).toBe(true);
     expect(result.toolsCalled).toEqual(['search_memory']);
+    expect(executeTool.mock.calls[0]?.[4]).toEqual({
+      ownerUserId: undefined,
+      agentId: undefined,
+      conversationId: 'conversation-legacy'
+    });
 
     const secondRequest = complete.mock.calls[1]![0];
     expect(secondRequest.messages).toEqual(expect.arrayContaining([
@@ -176,11 +191,18 @@ describe('shared native tool execution loop', () => {
 });
 
 describe('version-pinned execution tool resolution', () => {
-  it('preserves the built-in tool set when a version does not pin tools', async () => {
+  it('preserves built-ins without exposing server-owned resource identifiers', async () => {
     const resolved = await resolveExecutionToolDefinitions({ versionTools: [] });
     expect(resolved.map((tool) => tool.name).sort()).toEqual(
       getBuiltInToolDefinitions().map((tool) => tool.name).sort()
     );
+
+    const search = resolved.find((tool) => tool.name === 'search_memory');
+    const summary = resolved.find((tool) => tool.name === 'summarize_conversation');
+    const info = resolved.find((tool) => tool.name === 'get_agent_info');
+    expect(JSON.stringify(search?.input_schema)).not.toContain('conversationId');
+    expect(JSON.stringify(summary?.input_schema)).not.toContain('conversationId');
+    expect(JSON.stringify(info?.input_schema)).not.toContain('agentId');
   });
 
   it('treats a non-empty version tool list as an allowlist', async () => {
@@ -190,37 +212,51 @@ describe('version-pinned execution tool resolution', () => {
     expect(resolved.map((tool) => tool.name)).toEqual(['search_memory']);
   });
 
-  it('resolves registry tools only from public or matching tenant scope', async () => {
+  it('prefers the matching tenant when registry slugs collide and excludes another private tenant', async () => {
     const rows = [
       {
-        id: 'org-a-tool',
-        org_id: 'org-a',
-        name: 'Private Search',
-        slug: 'private_search',
-        description: 'Org A private search',
-        input_schema: { type: 'object', properties: { query: { type: 'string' } } },
-        public: false,
-        created_by: 'owner-a'
-      },
-      {
-        id: 'org-b-tool',
+        id: 'org-b-shared',
         org_id: 'org-b',
-        name: 'Other Org Tool',
-        slug: 'other_org_tool',
+        name: 'Other Org Shared Search',
+        slug: 'shared_search',
         description: 'Must not leak',
+        entrypoint: 'https://org-b.invalid/tool',
         input_schema: { type: 'object', properties: {} },
         public: false,
         created_by: 'owner-b'
       },
       {
-        id: 'public-tool',
+        id: 'public-shared',
         org_id: null,
-        name: 'Public Lookup',
-        slug: 'public_lookup',
-        description: 'Public registry tool',
+        name: 'Public Shared Search',
+        slug: 'shared_search',
+        description: 'Public fallback',
+        entrypoint: 'https://public.invalid/tool',
         input_schema: { type: 'object', properties: {} },
         public: true,
         created_by: 'publisher'
+      },
+      {
+        id: 'org-a-shared',
+        org_id: 'org-a',
+        name: 'Org A Shared Search',
+        slug: 'shared_search',
+        description: 'Org A private search',
+        entrypoint: 'https://org-a.invalid/tool',
+        input_schema: { type: 'object', properties: { query: { type: 'string' } } },
+        public: false,
+        created_by: 'owner-a'
+      },
+      {
+        id: 'org-b-only',
+        org_id: 'org-b',
+        name: 'Other Org Tool',
+        slug: 'other_org_tool',
+        description: 'Must not leak',
+        entrypoint: 'https://org-b.invalid/other',
+        input_schema: { type: 'object', properties: {} },
+        public: false,
+        created_by: 'owner-b'
       }
     ];
 
@@ -249,8 +285,7 @@ describe('version-pinned execution tool resolution', () => {
 
     const resolved = await resolveExecutionToolDefinitions({
       versionTools: [
-        { slug: 'private_search' },
-        { slug: 'public_lookup' },
+        { slug: 'shared_search' },
         { slug: 'other_org_tool' }
       ],
       organizationId: 'org-a',
@@ -258,8 +293,8 @@ describe('version-pinned execution tool resolution', () => {
       client: fakeClient
     });
 
-    expect(resolved.map((tool) => tool.name)).toEqual(['private_search', 'public_lookup']);
-    expect(resolved.find((tool) => tool.name === 'private_search')?.description).toBe('Org A private search');
+    expect(resolved.map((tool) => tool.name)).toEqual(['shared_search']);
+    expect(resolved[0]?.description).toBe('Org A private search');
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('other_org_tool'));
     warn.mockRestore();
   });
