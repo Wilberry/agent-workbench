@@ -60,7 +60,7 @@ describe('shared native tool execution loop', () => {
         estimated_cost: 0.002,
         stop_reason: 'stop'
       }));
-    const executeTool = vi.fn(async (name: string) => ({ ok: true, name }));
+    const executeTool = vi.fn(async (...args: any[]) => ({ ok: true, name: args[0] }));
 
     const result = await executeLLMToolLoop({
       provider: 'openai',
@@ -112,7 +112,7 @@ describe('shared native tool execution loop', () => {
         content: 'TOOL_CALL: {"name":"search_memory","args":{"query":"legacy"}}'
       }))
       .mockResolvedValueOnce(response({ content: 'Legacy fallback completed.' }));
-    const executeTool = vi.fn(async () => ({ matches: 2 }));
+    const executeTool = vi.fn(async (..._args: any[]) => ({ matches: 2 }));
 
     const result = await executeLLMToolLoop({
       provider: 'openai',
