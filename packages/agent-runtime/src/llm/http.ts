@@ -186,6 +186,9 @@ export async function requestWithProviderReliability(
       );
       await sleep(delay);
     } catch (error) {
+      // A network failure can happen before fetch returns, so clear the
+      // request timer before any retry delay in that path as well.
+      clearTimeout(timeout);
       if (error instanceof LLMProviderRequestError) throw error;
 
       const timedOut = controller.signal.aborted;
