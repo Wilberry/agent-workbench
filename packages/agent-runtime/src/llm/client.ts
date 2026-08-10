@@ -37,6 +37,12 @@ function getProvider(provider?: string): LLMProvider {
 
   const missingEnv = registration.requiredEnv.filter((key) => !process.env[key]);
   if (missingEnv.length > 0) {
+    if (name === 'openai' && missingEnv.includes('OPENAI_API_KEY')) {
+      throw new LLMConfigurationError(
+        'OPENAI_API_KEY is required for OpenAI provider. Set USE_MOCK_OPENAI=true only for explicit test environments.'
+      );
+    }
+
     throw new LLMConfigurationError(
       `${missingEnv.join(', ')} ${missingEnv.length === 1 ? 'is' : 'are'} required for the ${name} provider.`
     );
