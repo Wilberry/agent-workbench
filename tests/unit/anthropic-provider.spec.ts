@@ -84,9 +84,9 @@ describe('Anthropic provider', () => {
       model_name: 'claude-sonnet-4-6',
       prompt_tokens: 1000,
       completion_tokens: 500,
-      total_tokens: 1500,
-      estimated_cost: 0.0105
+      total_tokens: 1500
     });
+    expect(response.estimated_cost).toBeCloseTo(0.0105, 10);
   });
 
   it('rejects assistant-prefill shaped requests before calling Anthropic', async () => {
