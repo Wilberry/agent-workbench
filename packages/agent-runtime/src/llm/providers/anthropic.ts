@@ -1,5 +1,5 @@
 import type { LLMMessage, LLMProvider, LLMRequest, LLMResponse, LLMUsage } from '../types';
-import { getPricingProvider } from '../pricing';
+import { getPricingProvider, UnknownModelPricingError } from '../pricing';
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_API_VERSION = '2023-06-01';
@@ -75,6 +75,11 @@ export const anthropicProvider: LLMProvider = {
       throw new Error('ANTHROPIC_API_KEY is required for Anthropic provider');
     }
 
+    const pricingProvider = getPricingProvider();
+    if (!pricingProvider.getModelPricing(request.model, 'anthropic')) {
+      throw new UnknownModelPricingError(request.model, 'anthropic');
+    }
+
     const normalized = normalizeMessages(request.messages);
     const body = {
       model: request.model,
@@ -103,7 +108,7 @@ export const anthropicProvider: LLMProvider = {
     const payload = await response.json();
     const usage = normalizeUsage(payload);
     const modelName = payload?.model ?? request.model;
-    const estimated_cost = getPricingProvider().estimateCost(modelName, usage, 'anthropic');
+    const estimated_cost = pricingProvider.estimateCost(modelName, usage, 'anthropic');
 
     return {
       content: extractTextContent(payload),
