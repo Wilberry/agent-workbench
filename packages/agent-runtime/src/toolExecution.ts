@@ -54,7 +54,8 @@ type ExecuteTool = (
   name: string,
   args: Record<string, unknown>,
   runId?: string,
-  organizationId?: string | null
+  organizationId?: string | null,
+  ownerUserId?: string | null
 ) => Promise<unknown>;
 
 type ExecuteLLMToolLoopInput = {
@@ -64,6 +65,7 @@ type ExecuteLLMToolLoopInput = {
   tools: LLMToolDefinition[];
   runId?: string;
   organizationId?: string | null;
+  ownerUserId?: string | null;
   temperature?: number;
   max_tokens?: number;
   maxToolRounds?: number;
@@ -116,6 +118,7 @@ export async function executeLLMToolLoop({
   tools,
   runId,
   organizationId,
+  ownerUserId,
   temperature = 0.7,
   max_tokens = 1200,
   maxToolRounds = 2,
@@ -179,7 +182,13 @@ export async function executeLLMToolLoop({
       const roundResults: ToolExecutionRecord[] = [];
       for (const call of nativeCalls) {
         const startedAt = Date.now();
-        const result = await executeTool(call.name, call.arguments, runId, organizationId);
+        const result = await executeTool(
+          call.name,
+          call.arguments,
+          runId,
+          organizationId,
+          ownerUserId
+        );
         const record: ToolExecutionRecord = {
           call,
           result,
@@ -228,7 +237,8 @@ export async function executeLLMToolLoop({
         legacyCall.name,
         legacyCall.args,
         runId,
-        organizationId
+        organizationId,
+        ownerUserId
       );
       const record: ToolExecutionRecord = {
         call: syntheticCall,
