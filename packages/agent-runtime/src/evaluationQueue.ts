@@ -168,6 +168,24 @@ async function markEvaluationQueueJobCompleted(runId: string): Promise<void> {
   if (error) throw error;
 }
 
+async function markEvaluationQueueJobCancelled(runId: string): Promise<void> {
+  const supabase = createServerSupabaseClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const queueClient = supabase as any;
+  const cancelledAt = new Date().toISOString();
+  const { error } = await queueClient
+    .from('evaluation_run_jobs')
+    .update({
+      status: 'cancelled',
+      locked_at: null,
+      cancelled_at: cancelledAt,
+      updated_at: cancelledAt
+    })
+    .eq('evaluation_run_id', runId)
+    .in('status', ['pending', 'running']);
+  if (error) throw error;
+}
+
 async function incrementEvaluationAttempts(
   runId: string,
   failureReason: string
@@ -226,6 +244,7 @@ export async function processEvaluationRunJob(job: EvaluationRunQueueJob): Promi
     const errorMessage = error instanceof Error ? error.message : String(error);
 
     if (isCancellationError(error)) {
+      await markEvaluationQueueJobCancelled(job.runId);
       await experiments.syncExperimentStatusForRun(job.runId, supabase);
       return;
     }
@@ -233,12 +252,14 @@ export async function processEvaluationRunJob(job: EvaluationRunQueueJob): Promi
     try {
       const latestRun = await evaluations.getEvaluationRun(job.runId, supabase);
       if (latestRun.status === 'cancelled') {
+        await markEvaluationQueueJobCancelled(job.runId);
         await experiments.syncExperimentStatusForRun(job.runId, supabase);
         return;
       }
 
       const { attempts, maxAttempts, isDead, wasCancelled } = await incrementEvaluationAttempts(job.runId, errorMessage);
       if (wasCancelled) {
+        await markEvaluationQueueJobCancelled(job.runId);
         await experiments.syncExperimentStatusForRun(job.runId, supabase);
         return;
       }
