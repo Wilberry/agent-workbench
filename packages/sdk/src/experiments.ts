@@ -231,6 +231,9 @@ export const experiments = {
         ]);
         return { experiment, runA, runB };
       }
+      if (experiment.status === 'completed' || experiment.status === 'failed') {
+        throw new Error(`Experiment is already ${experiment.status}`);
+      }
     } else {
       if (!payload.name || !payload.agentId || !payload.versionAId || !payload.versionBId || !payload.datasetId) {
         throw new Error('Missing required experiment payload fields');
@@ -295,12 +298,12 @@ export const experiments = {
           run_b_id: runB.run.id
         })
         .eq('id', experiment.id)
-        .neq('status', 'cancelled')
+        .in('status', ['draft', 'running'])
         .select('*')
         .maybeSingle();
 
       if (updateError || !runningExperiment) {
-        if (!updateError) throw new Error('Experiment was cancelled before execution started');
+        if (!updateError) throw new Error('Experiment left an executable state before execution started');
         throw updateError;
       }
 
@@ -311,8 +314,12 @@ export const experiments = {
       };
     } catch (error) {
       const latest = await this.getExperiment(experiment.id, supabase);
-      if (latest.status !== 'cancelled') {
-        await supabase.from('experiments').update({ status: 'failed' }).eq('id', experiment.id);
+      if (latest.status === 'draft' || latest.status === 'running') {
+        await supabase
+          .from('experiments')
+          .update({ status: 'failed' })
+          .eq('id', experiment.id)
+          .in('status', ['draft', 'running']);
       }
       throw error;
     }
@@ -389,19 +396,25 @@ export const experiments = {
 
     if (error) throw error;
     if (!experiment) return null;
-    if (experiment.status === 'cancelled') return experiment as Experiment;
+    if (
+      experiment.status === 'cancelled' ||
+      experiment.status === 'completed' ||
+      experiment.status === 'failed'
+    ) {
+      return experiment as Experiment;
+    }
 
     if (!experiment.run_a_id || !experiment.run_b_id) {
-      if (experiment.status !== 'running') {
+      if (experiment.status === 'draft') {
         const { data, error: updateError } = await supabase
           .from('experiments')
           .update({ status: 'running' })
           .eq('id', experiment.id)
-          .neq('status', 'cancelled')
+          .eq('status', 'draft')
           .select('*')
           .maybeSingle();
         if (updateError) throw updateError;
-        return (data ?? experiment) as Experiment;
+        return (data ?? await this.getExperiment(experiment.id, supabase)) as Experiment;
       }
       return experiment as Experiment;
     }
@@ -438,10 +451,10 @@ export const experiments = {
       .from('experiments')
       .update(updates)
       .eq('id', experiment.id)
-      .neq('status', 'cancelled')
+      .in('status', ['draft', 'running'])
       .select('*')
       .maybeSingle();
     if (updateError) throw updateError;
-    return (updated ?? experiment) as Experiment;
+    return (updated ?? await this.getExperiment(experiment.id, supabase)) as Experiment;
   }
 };
