@@ -1,5 +1,18 @@
 import type { LLMResponse, LLMStreamEvent } from './types';
 
+export class LLMStreamProtocolError extends Error {
+  code = 'LLM_STREAM_PROTOCOL_ERROR';
+
+  constructor(
+    public readonly provider: string,
+    message: string,
+    options?: ErrorOptions
+  ) {
+    super(`${provider} stream protocol error: ${message}`, options);
+    this.name = 'LLMStreamProtocolError';
+  }
+}
+
 export async function collectLLMStream(
   events: AsyncIterable<LLMStreamEvent>,
   onEvent?: (event: LLMStreamEvent) => void | Promise<void>
@@ -14,7 +27,7 @@ export async function collectLLMStream(
   }
 
   if (!finalResponse) {
-    throw new Error('LLM stream ended without a response_end event');
+    throw new LLMStreamProtocolError('unknown', 'stream ended without a response_end event');
   }
 
   return finalResponse;
