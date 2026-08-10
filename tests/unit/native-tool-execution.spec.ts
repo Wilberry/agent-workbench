@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   executeLLMToolLoop,
   getBuiltInToolDefinitions,
+  LLMToolContinuationError,
   LLMToolExecutionError,
   LLMToolLoopLimitError,
   LLMToolNotAllowedError,
@@ -205,6 +206,38 @@ describe('shared native tool execution loop', () => {
       estimated_cost: 0.001,
       modelIterations: 1
     }));
+  });
+
+  it('does not replay a completed tool when provider continuation fails', async () => {
+    const complete = vi.fn<(request: LLMRequest) => Promise<LLMResponse>>()
+      .mockResolvedValueOnce(response({
+        stop_reason: 'tool_use',
+        tool_calls: [{ id: 'call_1', name: 'search_memory', arguments: { query: 'once' } }]
+      }))
+      .mockRejectedValueOnce(new Error('provider follow-up unavailable'));
+    const executeTool = vi.fn(async () => ({ ok: true }));
+    const onModelResponse = vi.fn();
+
+    let captured: unknown;
+    try {
+      await executeLLMToolLoop({
+        provider: 'openai',
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: 'Call then continue.' }],
+        tools: [searchTool],
+        complete,
+        executeTool,
+        onModelResponse
+      });
+    } catch (error) {
+      captured = error;
+    }
+
+    expect(captured).toBeInstanceOf(LLMToolContinuationError);
+    expect((captured as LLMToolContinuationError).completedToolCalls).toBe(1);
+    expect(executeTool).toHaveBeenCalledTimes(1);
+    expect(complete).toHaveBeenCalledTimes(2);
+    expect(onModelResponse).toHaveBeenCalledTimes(1);
   });
 
   it('does not execute another tool after the configured round limit', async () => {
