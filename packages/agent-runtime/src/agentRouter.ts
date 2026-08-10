@@ -115,15 +115,7 @@ export async function runMultiAgentWorkflow(
       },
       {
         role: 'user',
-        content: `User task: ${message}
-
-Memory context:
-${memoryContext}
-
-Previous agent output:
-${episode.join('\n')}
-
-Respond with your assigned role output.`
+        content: `User task: ${message}\n\nMemory context:\n${memoryContext}\n\nPrevious agent output:\n${episode.join('\n')}\n\nRespond with your assigned role output.`
       }
     ];
 
@@ -143,15 +135,13 @@ Respond with your assigned role output.`
       const toolStart = Date.now();
       const toolResult = await runTool(toolCall.name, toolCall.args, runId);
       const toolLatency = Date.now() - toolStart;
-      // record a step for the tool invocation
       steps.push({ name: `tool:${toolCall.name}`, latency: toolLatency, input: toolCall.args, output: toolResult });
 
       const toolPrompt = [
         ...rolePrompt,
         {
           role: 'system',
-          content: `Tool ${toolCall.name} executed. Result:
-${JSON.stringify(toolResult, null, 2)}`
+          content: `Tool ${toolCall.name} executed. Result:\n${JSON.stringify(toolResult, null, 2)}`
         },
         {
           role: 'user',
@@ -170,12 +160,10 @@ ${JSON.stringify(toolResult, null, 2)}`
       lastModelName = toolResponse.model_name;
     }
 
-    // push a step representing this role's output (use reported latency if available)
     const roleLatency = (agentResponse?.latency_ms as number | undefined) ?? undefined;
     steps.push({ name: `${role}`, latency: roleLatency, input: undefined, output: finalOutput });
 
-    episode.push(`${role.toUpperCase()} OUTPUT:
-  ${finalOutput}`);
+    episode.push(`${role.toUpperCase()} OUTPUT:\n  ${finalOutput}`);
   }
 
   return {
