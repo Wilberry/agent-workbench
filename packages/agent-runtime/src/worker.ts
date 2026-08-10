@@ -1,5 +1,6 @@
 import { createServerSupabaseClient, agents } from '@agent-workbench/sdk';
 import { chatCompletion } from './llm/client';
+import { isProviderRequestError } from './llm/http';
 import { runTool } from './tools';
 import { generateEmbedding } from './embeddings';
 import { randomUUID } from 'crypto';
@@ -63,6 +64,10 @@ function parseToolCall(text: string) {
   }
 }
 
+function normalizeProviderName(provider?: string | null): string {
+  return provider?.trim().toLowerCase() || 'openai';
+}
+
 async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -98,6 +103,7 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
     }
 
     const existingTrace = (existingRun?.execution_trace as Array<Record<string, unknown>>) || [];
+    void existingTrace;
     let currentStep = existingRun?.current_step || 0;
     const pinnedAgentVersionId = existingRun?.agent_version_id ?? null;
 
@@ -117,6 +123,7 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
     const agentName = agent?.name ?? 'AI agent';
     let selectedSystemPrompt = agent?.system_prompt ? `Agent prompt:\n${agent.system_prompt}\n\n` : '';
     let selectedModel = (agent?.model as string | undefined) ?? 'gpt-4o-mini';
+    let selectedProvider = normalizeProviderName(agent?.provider as string | undefined);
     let versionWorkflow: string[] | undefined;
 
     if (pinnedAgentVersionId) {
@@ -129,6 +136,9 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
           if (pinnedVersion.model) {
             selectedModel = pinnedVersion.model;
           }
+          if (pinnedVersion.provider) {
+            selectedProvider = normalizeProviderName(pinnedVersion.provider);
+          }
           if (Array.isArray(pinnedVersion.workflow) && pinnedVersion.workflow.length > 0) {
             versionWorkflow = pinnedVersion.workflow;
           }
@@ -140,12 +150,15 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
 
     const baseAgentPrompt = selectedSystemPrompt;
     const agentModel = selectedModel;
+    const agentProvider = selectedProvider;
     const effectiveWorkflow = versionWorkflow ?? job.workflow;
 
     void persistEvent('run_started', {
       workflow: effectiveWorkflow,
       message,
-      organizationId: organizationId
+      organizationId,
+      provider: agentProvider,
+      model: agentModel
     });
 
     // Update status to running
@@ -161,6 +174,7 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
     let totalTokens = 0;
     let totalEstimatedCost = 0;
     let totalLatencyMs = 0;
+    let lastProviderName: string | undefined;
     let lastModelName: string | undefined;
 
     // Resume from current_step in case of restart
@@ -170,8 +184,11 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
       let modelIterations = 0;
       let stepFailed = false;
       let stepError: string | null = null;
+      let stepCause: unknown = null;
 
-      // Retry logic for this step
+      // Non-provider failures retain the legacy step retry loop. Provider
+      // transport failures already exhausted their bounded HTTP retries and
+      // are delegated to the durable queue layer below.
       for (let retryAttempt = 0; retryAttempt <= MAX_RETRIES; retryAttempt += 1) {
         try {
           const rolePrompt = [
@@ -181,27 +198,18 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
             },
             {
               role: 'user',
-              content: `Agent: ${agentName}
-
-User task: ${message}
-
-Memory context:
-${memoryContext}
-
-Previous agent output:
-${episode.join('\n')}
-
-Respond with your assigned role output.`
+              content: `Agent: ${agentName}\n\nUser task: ${message}\n\nMemory context:\n${memoryContext}\n\nPrevious agent output:\n${episode.join('\n')}\n\nRespond with your assigned role output.`
             }
           ];
 
           const agentResult = await chatCompletion({
+            provider: agentProvider,
             model: agentModel,
             messages: rolePrompt,
             temperature: 0.7,
             max_tokens: 1200
           });
-          let agentOutput = agentResult.content;
+          const agentOutput = agentResult.content;
           modelIterations += 1;
           totalIterations += 1;
           let finalOutput = agentOutput;
@@ -210,6 +218,7 @@ Respond with your assigned role output.`
           totalTokens += agentResult.total_tokens;
           totalEstimatedCost += agentResult.estimated_cost;
           totalLatencyMs += agentResult.latency_ms;
+          lastProviderName = agentResult.provider_name ?? agentProvider;
           lastModelName = agentResult.model_name;
           await updateRunTelemetry(runId, {
             input_tokens: totalInputTokens,
@@ -217,6 +226,7 @@ Respond with your assigned role output.`
             total_tokens: totalTokens,
             estimated_cost: totalEstimatedCost,
             latency_ms: totalLatencyMs,
+            provider_name: lastProviderName,
             model_name: lastModelName
           });
 
@@ -243,8 +253,7 @@ Respond with your assigned role output.`
               ...rolePrompt,
               {
                 role: 'system',
-                content: `Tool ${toolCall.name} executed. Result:
-${JSON.stringify(toolResult, null, 2)}`
+                content: `Tool ${toolCall.name} executed. Result:\n${JSON.stringify(toolResult, null, 2)}`
               },
               {
                 role: 'user',
@@ -253,6 +262,7 @@ ${JSON.stringify(toolResult, null, 2)}`
             ];
 
             const toolResultOutput = await chatCompletion({
+              provider: agentProvider,
               model: agentModel,
               messages: toolPrompt,
               temperature: 0.7,
@@ -266,6 +276,7 @@ ${JSON.stringify(toolResult, null, 2)}`
             totalTokens += toolResultOutput.total_tokens;
             totalEstimatedCost += toolResultOutput.estimated_cost;
             totalLatencyMs += toolResultOutput.latency_ms;
+            lastProviderName = toolResultOutput.provider_name ?? agentProvider;
             lastModelName = toolResultOutput.model_name;
             await updateRunTelemetry(runId, {
               input_tokens: totalInputTokens,
@@ -273,6 +284,7 @@ ${JSON.stringify(toolResult, null, 2)}`
               total_tokens: totalTokens,
               estimated_cost: totalEstimatedCost,
               latency_ms: totalLatencyMs,
+              provider_name: lastProviderName,
               model_name: lastModelName
             });
             stepTokens += toolResultOutput.total_tokens;
@@ -305,6 +317,7 @@ ${JSON.stringify(toolResult, null, 2)}`
             step: role,
             status: 'completed',
             output: finalOutput,
+            provider: lastProviderName,
             model: lastModelName,
             tokens: stepTokens,
             latency_ms: stepLatencyMs,
@@ -315,8 +328,17 @@ ${JSON.stringify(toolResult, null, 2)}`
           stepFailed = false;
           break;
         } catch (error) {
+          stepCause = error;
           stepError = error instanceof Error ? error.message : String(error);
           stepFailed = true;
+
+          if (isProviderRequestError(error)) {
+            console.error(
+              `Step ${stepIndex} (${role}) provider request failed after ${error.attempts} transport attempt(s):`,
+              stepError
+            );
+            break;
+          }
 
           if (retryAttempt < MAX_RETRIES) {
             const backoffMs = getExponentialBackoff(retryAttempt);
@@ -331,37 +353,38 @@ ${JSON.stringify(toolResult, null, 2)}`
       }
 
       if (stepFailed) {
-          void persistEvent('step_failed', {
-            stepIndex,
-            step: role,
-            error: stepError,
-            model: lastModelName,
-            toolName: toolsCalled[0] ?? null
-          });
+        void persistEvent('step_failed', {
+          stepIndex,
+          step: role,
+          error: stepError,
+          provider: lastProviderName ?? agentProvider,
+          model: lastModelName ?? agentModel,
+          toolName: toolsCalled[0] ?? null
+        });
 
-          // Persist error step and broadcast
-          const errorExecStep: ExecutionStep = {
-            id: randomUUID(),
-            run_id: runId,
-            step: role.toLowerCase() as ExecutionStep['step'],
-            status: 'failed',
-            input: message,
-            output: '',
-            error: stepError || undefined,
-            timestamp: new Date().toISOString(),
-            metadata: {
-              model: lastModelName,
-              tokens: undefined,
-              toolName: toolsCalled[0]
-            }
-          };
+        // Persist error step and broadcast. Terminal/requeue state is decided
+        // once at the durable job boundary in the outer catch below.
+        const errorExecStep: ExecutionStep = {
+          id: randomUUID(),
+          run_id: runId,
+          step: role.toLowerCase() as ExecutionStep['step'],
+          status: 'failed',
+          input: message,
+          output: '',
+          error: stepError || undefined,
+          timestamp: new Date().toISOString(),
+          metadata: {
+            model: lastModelName ?? agentModel,
+            tokens: undefined,
+            toolName: toolsCalled[0]
+          }
+        };
 
-          await persistExecutionStep(runId, errorExecStep);
-          await markRunFailed(runId, `Step ${stepIndex} (${role}) failed after ${MAX_RETRIES} retries: ${stepError}`);
-          await markQueueJobFailed(runId, stepError ?? `Step ${stepIndex} (${role}) failed`);
-          setProcessing(runId, false);
-          throw new Error(`Workflow failed at step ${stepIndex}`);
-        }
+        await persistExecutionStep(runId, errorExecStep);
+        setProcessing(runId, false);
+        if (stepCause instanceof Error) throw stepCause;
+        throw new Error(`Workflow failed at step ${stepIndex}: ${stepError}`);
+      }
       currentStep = stepIndex + 1;
     }
 
@@ -391,7 +414,8 @@ ${JSON.stringify(toolResult, null, 2)}`
       total_tokens: totalTokens,
       estimated_cost: totalEstimatedCost,
       latency_ms: totalLatencyMs,
-      model_name: lastModelName ?? null
+      provider_name: lastProviderName ?? agentProvider,
+      model_name: lastModelName ?? agentModel
     });
     await markRunCompleted(runId);
     await markQueueJobCompleted(runId);
@@ -399,18 +423,38 @@ ${JSON.stringify(toolResult, null, 2)}`
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     void persistEvent('run_failed', {
-      error: errorMessage
+      error: errorMessage,
+      provider: isProviderRequestError(error) ? error.provider : undefined,
+      request_id: isProviderRequestError(error) ? error.requestId : undefined
     });
     console.error('Workflow execution failed:', errorMessage);
+
+    if (isProviderRequestError(error) && !error.retryable) {
+      try {
+        await markQueueJobFailed(runId, errorMessage);
+        await markRunFailed(runId, `Non-retryable provider failure: ${errorMessage}`);
+      } catch (qErr) {
+        console.warn('Failed to mark non-retryable provider failure terminal:', qErr);
+      }
+      throw error;
+    }
+
     try {
       const { attempts, maxAttempts, isDead } = await incrementAttemptsAndMaybeDead(runId, errorMessage);
       if (isDead) {
         await markRunFailed(runId, `Job failed after ${attempts}/${maxAttempts} attempts: ${errorMessage}`);
+      } else {
+        await supabase
+          .from('agent_runs')
+          .update({ status: 'pending', error_message: null })
+          .eq('id', runId);
       }
     } catch (qErr) {
       console.warn('Failed to update job attempts/queue state:', qErr);
     }
     throw error;
+  } finally {
+    setProcessing(runId, false);
   }
 }
 
@@ -436,5 +480,5 @@ export async function startBackgroundWorker(): Promise<void> {
     }
   };
 
-  worker();
+  void worker();
 }
