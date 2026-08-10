@@ -17,10 +17,6 @@ async function createAgent(formData: FormData) {
   const name = formData.get('name')?.toString() ?? '';
   const description = formData.get('description')?.toString() ?? '';
   const system_prompt = formData.get('system_prompt')?.toString() ?? '';
-  const selection = assertSelectableProviderModel(
-    formData.get('provider')?.toString(),
-    formData.get('model')?.toString()
-  );
 
   if (!name || !system_prompt) {
     throw new Error('Name and system prompt are required');
@@ -33,6 +29,11 @@ async function createAgent(formData: FormData) {
   if (!user) {
     throw new Error('Not authenticated');
   }
+
+  const selection = assertSelectableProviderModel(
+    formData.get('provider')?.toString(),
+    formData.get('model')?.toString()
+  );
 
   const agent = await agents.create(
     user.id,
