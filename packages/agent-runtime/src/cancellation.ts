@@ -26,7 +26,7 @@ export function throwIfAborted(signal?: AbortSignal): void {
   }
 }
 
-export function isAgentExecutionCancelledError(error: unknown): error is AgentExecutionCancelledError {
+export function isAgentExecutionCancelledError(error: unknown): boolean {
   const visited = new Set<unknown>();
   let candidate: unknown = error;
 
