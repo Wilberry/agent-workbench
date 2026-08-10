@@ -16,7 +16,7 @@ export type ExecutionTrace = {
   prompt_tokens?: number;
   completion_tokens?: number;
   total_tokens?: number;
-  estimated_cost?: number | null;
+  estimated_cost?: number;
   latency_ms?: number;
   workflow_failed?: boolean;
   fallback_reason?: string;
@@ -74,13 +74,6 @@ function parseToolCall(text: string) {
   } catch {
     return null;
   }
-}
-
-function addEstimatedCost(total: number | null, next: number | null): number | null {
-  if (total === null || next === null) {
-    return null;
-  }
-  return total + next;
 }
 
 function errorMessage(error: unknown): string {
@@ -168,7 +161,7 @@ export async function runAgent({
   let totalPromptTokens = 0;
   let totalCompletionTokens = 0;
   let totalTokens = 0;
-  let totalEstimatedCost: number | null = 0;
+  let totalEstimatedCost = 0;
   let totalLatencyMs = 0;
   let lastModelName: string | undefined;
   let workflowFailed = false;
@@ -195,9 +188,7 @@ export async function runAgent({
       totalPromptTokens = result.trace.prompt_tokens ?? totalPromptTokens;
       totalCompletionTokens = result.trace.completion_tokens ?? totalCompletionTokens;
       totalTokens = result.trace.total_tokens ?? totalTokens;
-      if (result.trace.estimated_cost !== undefined) {
-        totalEstimatedCost = result.trace.estimated_cost;
-      }
+      totalEstimatedCost = result.trace.estimated_cost ?? totalEstimatedCost;
       totalLatencyMs = result.trace.latency_ms ?? totalLatencyMs;
       lastModelName = result.trace.model_name ?? lastModelName;
     } catch (err) {
@@ -230,7 +221,7 @@ export async function runAgent({
       totalPromptTokens += assistantResult.prompt_tokens;
       totalCompletionTokens += assistantResult.completion_tokens;
       totalTokens += assistantResult.total_tokens;
-      totalEstimatedCost = addEstimatedCost(totalEstimatedCost, assistantResult.estimated_cost);
+      totalEstimatedCost += assistantResult.estimated_cost;
       totalLatencyMs += assistantResult.latency_ms;
       lastModelName = assistantResult.model_name;
 
@@ -277,7 +268,7 @@ export async function runAgent({
       input_tokens: totalPromptTokens,
       output_tokens: totalCompletionTokens,
       total_tokens: totalTokens,
-      estimated_cost: totalEstimatedCost ?? undefined,
+      estimated_cost: totalEstimatedCost,
       latency_ms: totalLatencyMs,
       model_name: lastModelName ?? null
     });
