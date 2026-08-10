@@ -13,7 +13,7 @@ function normalizeEvaluationRunSummary(results: Array<{ exact_match: boolean }>)
   const total = results.length;
   const passed = results.filter((result) => result.exact_match).length;
   return {
-    total_examples: total,
+    processed_examples: total,
     exact_match_count: passed,
     exact_match_rate: total > 0 ? passed / total : 0
   };
@@ -26,8 +26,6 @@ function normalizeTextValue(value: unknown) {
     }
 
     if (value && typeof value === 'object') {
-      // If it's the common `{ text: '...' }` shape, prefer that
-      // otherwise stringify as a fallback.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const asAny = value as any;
       if (typeof asAny.text === 'string') {
@@ -40,6 +38,48 @@ function normalizeTextValue(value: unknown) {
   } catch {
     return String(value ?? '').trim().toLowerCase();
   }
+}
+
+export function buildEvaluationRunSummary(
+  results: EvaluationRunResult[],
+  totalExamples: number
+): Record<string, unknown> {
+  const normalizedSummary = normalizeEvaluationRunSummary(results);
+  let totalLatencyMs = 0;
+  let totalTokens = 0;
+  let totalEstimatedCost = 0;
+  const toolsUsed: string[] = [];
+  const agentsUsed: string[] = [];
+
+  for (const result of results) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const trace = (result.details as any)?.trace ?? {};
+    totalLatencyMs += Number(trace.latency_ms ?? 0);
+    totalTokens += Number(trace.total_tokens ?? 0);
+    totalEstimatedCost += Number(trace.estimated_cost ?? 0);
+
+    if (Array.isArray(trace.toolsCalled)) {
+      toolsUsed.push(...trace.toolsCalled.filter((name: unknown) => typeof name === 'string'));
+    }
+    if (Array.isArray(trace.agentsUsed)) {
+      agentsUsed.push(...trace.agentsUsed.filter((name: unknown) => typeof name === 'string'));
+    }
+  }
+
+  const processedExamples = results.length;
+  return {
+    ...normalizedSummary,
+    total_examples: totalExamples,
+    remaining_examples: Math.max(0, totalExamples - processedExamples),
+    progress: totalExamples > 0 ? processedExamples / totalExamples : 1,
+    average_latency_ms: processedExamples ? totalLatencyMs / processedExamples : 0,
+    average_tokens: processedExamples ? totalTokens / processedExamples : 0,
+    estimated_cost: totalEstimatedCost,
+    trace: {
+      toolsCalled: Array.from(new Set(toolsUsed)),
+      agentsUsed: Array.from(new Set(agentsUsed))
+    }
+  };
 }
 
 export const evaluations = {
@@ -165,9 +205,7 @@ export const evaluations = {
     if (error) throw error;
 
     return (data ?? []).reduce<Record<string, number>>((acc, row) => {
-      if (!row?.dataset_id) {
-        return acc;
-      }
+      if (!row?.dataset_id) return acc;
       acc[row.dataset_id] = (acc[row.dataset_id] ?? 0) + 1;
       return acc;
     }, {});
@@ -195,6 +233,9 @@ export const evaluations = {
     return (data ?? []) as EvaluationRun[];
   },
 
+  /**
+   * Create and enqueue an evaluation run. Execution happens in the runtime worker.
+   */
   async createEvaluationRun(
     userId: string,
     payload: {
@@ -211,20 +252,23 @@ export const evaluations = {
       .select('*')
       .eq('id', payload.datasetId)
       .single();
-
     if (datasetError || !dataset) throw datasetError ?? new Error('Dataset not found');
 
     const agentVersion = await agents.getVersion(payload.agentVersionId, supabase);
     if (!agentVersion) throw new Error('Agent version not found');
+    if (dataset.agent_id && dataset.agent_id !== agentVersion.agent_id) {
+      throw new Error('Agent version does not belong to the evaluation dataset agent');
+    }
 
     const { data: examples, error: examplesError } = await supabase
       .from('evaluation_dataset_examples')
-      .select('*')
-      .eq('dataset_id', payload.datasetId)
-      .order('example_index', { ascending: true });
-
+      .select('id')
+      .eq('dataset_id', payload.datasetId);
     if (examplesError) throw examplesError;
-    const exampleRows = (examples ?? []) as EvaluationDatasetExample[];
+
+    const totalExamples = examples?.length ?? 0;
+    const organizationId = payload.organizationId ?? dataset.organization_id ?? null;
+    const summary = buildEvaluationRunSummary([], totalExamples);
 
     const { data: run, error: runError } = await supabase
       .from('evaluation_runs')
@@ -233,47 +277,88 @@ export const evaluations = {
           dataset_id: payload.datasetId,
           agent_version_id: payload.agentVersionId,
           user_id: userId,
-          organization_id: payload.organizationId ?? null,
-          status: 'running',
-          summary: {}
+          organization_id: organizationId,
+          status: 'pending',
+          summary
         }
       ])
       .select('*')
       .single();
 
     if (runError || !run) throw runError ?? new Error('Failed to create evaluation run');
-    const runId = run.id as string;
 
-    const resultRows: EvaluationRunResult[] = [];
-    let totalLatencyMs = 0;
-    let totalTokens = 0;
-    let totalEstimatedCost = 0;
-    const toolsUsed: string[] = [];
-    const agentsUsed: string[] = [];
+    // The queue table is introduced by migration 000019. Keep the SDK Database
+    // type independent from migration ordering by narrowing this table locally.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const queueClient = supabase as any;
+    const { error: queueError } = await queueClient.from('evaluation_run_jobs').insert([
+      {
+        evaluation_run_id: run.id,
+        user_id: userId,
+        organization_id: organizationId,
+        status: 'pending'
+      }
+    ]);
 
-    for (const example of exampleRows) {
+    if (queueError) {
+      await supabase
+        .from('evaluation_runs')
+        .update({
+          status: 'failed',
+          summary: { ...summary, error: queueError.message ?? String(queueError) }
+        })
+        .eq('id', run.id);
+      throw queueError;
+    }
+
+    return { run: { ...(run as EvaluationRun), status: 'pending', summary } as EvaluationRun };
+  },
+
+  /**
+   * Execute a persisted evaluation run. Existing result rows are treated as
+   * checkpoints so a retried job resumes from the first unfinished example.
+   */
+  async executeEvaluationRun(runId: string, client?: SupabaseClient<Database>) {
+    const supabase = client ?? createServerSupabaseClient();
+
+    const run = await this.getEvaluationRun(runId, supabase);
+    if (!run) throw new Error('Evaluation run not found');
+
+    const examples = await this.listDatasetExamples(run.dataset_id, supabase);
+    const agentVersion = await agents.getVersion(run.agent_version_id, supabase);
+    if (!agentVersion) throw new Error('Agent version not found');
+
+    let resultRows = await this.getEvaluationResults(runId, supabase);
+    if (run.status === 'completed') {
+      return { run, results: resultRows, summary: run.summary };
+    }
+
+    let summary = buildEvaluationRunSummary(resultRows, examples.length);
+    const { error: runningError } = await supabase
+      .from('evaluation_runs')
+      .update({ status: 'running', summary })
+      .eq('id', runId);
+    if (runningError) throw runningError;
+
+    const completedExampleIds = new Set(resultRows.map((result) => result.example_id));
+
+    for (const example of examples) {
+      if (completedExampleIds.has(example.id)) continue;
+
       const agentResponse = await runAgentForEvaluation(
         agentVersion.agent_id,
-        payload.agentVersionId,
+        run.agent_version_id,
         example.input,
         supabase
       );
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const normalizedAgentOutput = normalizeTextValue((agentResponse as any)?.text ?? agentResponse);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const normalizedExpected = normalizeTextValue((example.expected_output as any)?.text ?? example.expected_output);
       const exactMatch = normalizedAgentOutput === normalizedExpected;
-
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const trace = (agentResponse as any)?.trace ?? {};
-      totalLatencyMs += Number(trace.latency_ms ?? 0);
-      totalTokens += Number(trace.total_tokens ?? 0);
-      totalEstimatedCost += Number(trace.estimated_cost ?? 0);
-
-      if (Array.isArray(trace.toolsCalled)) {
-        toolsUsed.push(...trace.toolsCalled.filter((name: unknown) => typeof name === 'string'));
-      }
-      if (Array.isArray(trace.agentsUsed)) {
-        agentsUsed.push(...trace.agentsUsed.filter((name: unknown) => typeof name === 'string'));
-      }
 
       const resultPayload = {
         evaluation_run_id: runId,
@@ -284,7 +369,7 @@ export const evaluations = {
           normalized_output: normalizedAgentOutput,
           passed: exactMatch,
           score: exactMatch ? 1 : 0,
-          trace: trace
+          trace
         }
       };
 
@@ -295,29 +380,50 @@ export const evaluations = {
         .single();
 
       if (resultError || !result) throw resultError ?? new Error('Failed to persist evaluation result');
-      resultRows.push(result as EvaluationRunResult);
+
+      resultRows = [...resultRows, result as EvaluationRunResult];
+      completedExampleIds.add(example.id);
+      summary = buildEvaluationRunSummary(resultRows, examples.length);
+
+      const { error: progressError } = await supabase
+        .from('evaluation_runs')
+        .update({ summary })
+        .eq('id', runId);
+      if (progressError) throw progressError;
     }
 
-    const normalizedSummary = normalizeEvaluationRunSummary(resultRows);
-    const summary = {
-      ...normalizedSummary,
-      average_latency_ms: resultRows.length ? totalLatencyMs / resultRows.length : 0,
-      average_tokens: resultRows.length ? totalTokens / resultRows.length : 0,
-      estimated_cost: totalEstimatedCost,
-      trace: {
-        toolsCalled: Array.from(new Set(toolsUsed)),
-        agentsUsed: Array.from(new Set(agentsUsed))
-      }
-    };
-
-    const { error: updateError } = await supabase
+    summary = buildEvaluationRunSummary(resultRows, examples.length);
+    const { data: completedRun, error: updateError } = await supabase
       .from('evaluation_runs')
       .update({ status: 'completed', summary })
+      .eq('id', runId)
+      .select('*')
+      .single();
+
+    if (updateError || !completedRun) throw updateError ?? new Error('Failed to complete evaluation run');
+
+    return { run: completedRun as EvaluationRun, results: resultRows, summary };
+  },
+
+  async markEvaluationRunFailed(
+    runId: string,
+    errorMessage: string,
+    client?: SupabaseClient<Database>
+  ) {
+    const supabase = client ?? createServerSupabaseClient();
+    const run = await this.getEvaluationRun(runId, supabase);
+    const results = await this.getEvaluationResults(runId, supabase);
+    const examples = await this.listDatasetExamples(run.dataset_id, supabase);
+    const summary = {
+      ...buildEvaluationRunSummary(results, examples.length),
+      error: errorMessage
+    };
+
+    const { error } = await supabase
+      .from('evaluation_runs')
+      .update({ status: 'failed', summary })
       .eq('id', runId);
-
-    if (updateError) throw updateError;
-
-    return { run: run as EvaluationRun, results: resultRows, summary };
+    if (error) throw error;
   },
 
   async getEvaluationRun(runId: string, client?: SupabaseClient<Database>) {
@@ -358,14 +464,6 @@ export const evaluations = {
   }
 };
 
-function normalizeOutput(output: Record<string, unknown>) {
-  try {
-    return JSON.stringify(output);
-  } catch {
-    return String(output);
-  }
-}
-
 async function runAgentForEvaluation(
   agentId: string,
   agentVersionId: string,
@@ -378,9 +476,7 @@ async function runAgentForEvaluation(
     .eq('id', agentId)
     .single();
 
-  if (!agent) {
-    throw new Error('Agent not found for evaluation');
-  }
+  if (!agent) throw new Error('Agent not found for evaluation');
 
   const { data: agentVersion } = await supabase
     .from('agent_versions')
@@ -388,9 +484,7 @@ async function runAgentForEvaluation(
     .eq('id', agentVersionId)
     .single();
 
-  if (!agentVersion) {
-    throw new Error('Agent version not found for evaluation');
-  }
+  if (!agentVersion) throw new Error('Agent version not found for evaluation');
 
   const message = String(input?.text ?? input);
   const { data: conversation } = await supabase
@@ -399,13 +493,10 @@ async function runAgentForEvaluation(
     .select('id')
     .single();
 
-  if (!conversation) {
-    throw new Error('Failed to create temporary conversation for evaluation');
-  }
+  if (!conversation) throw new Error('Failed to create temporary conversation for evaluation');
 
-  // Dynamically import the runtime at runtime. Use `eval('import(...)')` so
-  // TypeScript does not statically analyze and include the runtime project
-  // into the SDK build (this keeps package boundaries clean).
+  // Dynamically import the runtime so the SDK does not statically depend on the
+  // runtime project while still executing the pinned agent workflow.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const runtimeModule: any = await (eval('import("@agent-workbench/agent-runtime")'));
   const runMultiAgentWorkflow = runtimeModule.runMultiAgentWorkflow as (
@@ -424,5 +515,5 @@ async function runAgentForEvaluation(
     agentVersion.model
   );
 
-  return { text: result.message, trace: (result as any).trace ?? {} };
+  return { text: result.message, trace: result.trace ?? {} };
 }

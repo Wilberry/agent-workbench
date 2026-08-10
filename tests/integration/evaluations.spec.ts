@@ -14,7 +14,6 @@ beforeEach(async () => {
 afterEach(async () => {
   if (context) {
     await cleanupRuns(context);
-    // delete created datasets and related rows
     await supabase.from('evaluation_run_results').delete().neq('id', '');
     await supabase.from('evaluation_runs').delete().neq('id', '');
     await supabase.from('evaluation_dataset_examples').delete().neq('id', '');
@@ -46,43 +45,55 @@ describe('Evaluations integration', () => {
     expect(fetched.name).toBe('test-dataset');
   });
 
-  it('evaluation run executes examples and computes exact_match summary (version pinning)', async () => {
-    // Mock the runtime to return deterministic outputs matching expected_output (but with different casing)
+  it('queues an evaluation and executes it from the persisted run checkpoint', async () => {
     vi.doMock('@agent-workbench/agent-runtime', () => ({
-      runMultiAgentWorkflow: async () => ({ message: 'expected one' })
+      runMultiAgentWorkflow: async () => ({
+        message: 'expected one',
+        trace: { total_tokens: 10, latency_ms: 25, estimated_cost: 0.001 }
+      })
     }));
 
-    // create dataset
     const dataset = await evaluations.createDataset(context!.userId, {
       agentId: context!.agentId,
       name: 'eval-dataset',
       description: 'for eval run'
     }, supabase);
 
-    const examples = [
+    await evaluations.addDatasetExamples(dataset.id, [
       { input: { text: 'irrelevant' }, expectedOutput: { text: 'EXPECTED ONE' } }
-    ];
-    await evaluations.addDatasetExamples(dataset.id, examples, supabase);
+    ], supabase);
 
-    // Run evaluation pinned to version created by createTestRun
-    const res = await evaluations.createEvaluationRun(context!.userId, {
+    const queued = await evaluations.createEvaluationRun(context!.userId, {
       datasetId: dataset.id,
       agentVersionId: context!.versionId
     }, supabase);
 
-    expect(res).toBeDefined();
-    expect(res.results.length).toBe(1);
-    // summary should show exact_match_rate = 1.0 after normalization (case-insensitive)
-    expect(res.summary.exact_match_rate).toBe(1);
+    expect(queued.run.status).toBe('pending');
+    expect(queued.run.summary).toMatchObject({
+      total_examples: 1,
+      processed_examples: 0,
+      progress: 0
+    });
 
-    // Now change agent settings (system_prompt) and re-run with same pinned version to verify pinning
+    const executed = await evaluations.executeEvaluationRun(queued.run.id, supabase);
+    expect(executed.run.status).toBe('completed');
+    expect(executed.results.length).toBe(1);
+    expect(executed.summary).toMatchObject({
+      total_examples: 1,
+      processed_examples: 1,
+      remaining_examples: 0,
+      exact_match_rate: 1,
+      progress: 1
+    });
+
     await supabase.from('agents').update({ system_prompt: 'different prompt' }).eq('id', context!.agentId);
 
-    const res2 = await evaluations.createEvaluationRun(context!.userId, {
+    const queuedAgain = await evaluations.createEvaluationRun(context!.userId, {
       datasetId: dataset.id,
       agentVersionId: context!.versionId
     }, supabase);
+    const executedAgain = await evaluations.executeEvaluationRun(queuedAgain.run.id, supabase);
 
-    expect(res2.summary.exact_match_rate).toBe(1);
+    expect(executedAgain.summary.exact_match_rate).toBe(1);
   });
 });
