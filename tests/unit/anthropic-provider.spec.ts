@@ -89,6 +89,22 @@ describe('Anthropic provider', () => {
     expect(response.estimated_cost).toBeCloseTo(0.0105, 10);
   });
 
+  it('rejects unmetered Anthropic models before making a billable request', async () => {
+    process.env.ANTHROPIC_API_KEY = 'test-anthropic-key';
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      chatCompletion({
+        provider: 'anthropic',
+        model: 'claude-sonnet-5',
+        messages: [{ role: 'user', content: 'Hello' }]
+      })
+    ).rejects.toThrow('No pricing is configured for provider/model: anthropic/claude-sonnet-5');
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('rejects assistant-prefill shaped requests before calling Anthropic', async () => {
     process.env.ANTHROPIC_API_KEY = 'test-anthropic-key';
     const fetchMock = vi.fn();
