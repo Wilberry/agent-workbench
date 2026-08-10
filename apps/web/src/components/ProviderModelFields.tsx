@@ -14,13 +14,15 @@ function normalizeProvider(provider?: string | null) {
 }
 
 export default function ProviderModelFields({ catalog, initialProvider, initialModel }: Props) {
+  const currentProvider = initialProvider ? normalizeProvider(initialProvider) : null;
   const defaultProvider = useMemo(() => {
-    const requested = normalizeProvider(initialProvider);
-    if (catalog.some((provider) => provider.name === requested)) return requested;
+    if (currentProvider && catalog.some((provider) => provider.name === currentProvider)) {
+      return currentProvider;
+    }
     return catalog.find((provider) => provider.configured && provider.models.length > 0)?.name
       ?? catalog.find((provider) => provider.models.length > 0)?.name
       ?? 'openai';
-  }, [catalog, initialProvider]);
+  }, [catalog, currentProvider]);
 
   const initialProviderEntry = catalog.find((provider) => provider.name === defaultProvider);
   const initialModelIsAvailable = Boolean(
@@ -34,9 +36,8 @@ export default function ProviderModelFields({ catalog, initialProvider, initialM
   );
 
   const providerEntry = catalog.find((entry) => entry.name === provider);
-  const currentProvider = normalizeProvider(initialProvider);
   const currentSelectionIsUnconfigured = Boolean(
-    initialProvider &&
+    currentProvider &&
     currentProvider === provider &&
     !providerEntry?.configured
   );
