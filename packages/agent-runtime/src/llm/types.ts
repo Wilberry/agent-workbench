@@ -1,6 +1,24 @@
+export type LLMToolDefinition = {
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+};
+
+export type LLMToolCall = {
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+};
+
+export type LLMToolChoice = 'auto' | 'none' | 'required';
+
 export type LLMMessage = {
-  role: 'system' | 'user' | 'assistant' | string;
+  role: 'system' | 'user' | 'assistant' | 'tool' | string;
   content: string;
+  tool_calls?: LLMToolCall[];
+  tool_call_id?: string;
+  name?: string;
+  is_error?: boolean;
 };
 
 export type LLMRequest = {
@@ -11,6 +29,8 @@ export type LLMRequest = {
   provider?: string;
   timeout_ms?: number;
   max_retries?: number;
+  tools?: LLMToolDefinition[];
+  tool_choice?: LLMToolChoice;
 };
 
 export type LLMUsage = {
@@ -28,6 +48,8 @@ export type LLMResponse = {
   total_tokens: number;
   latency_ms: number;
   estimated_cost: number;
+  tool_calls?: LLMToolCall[];
+  stop_reason?: 'stop' | 'tool_use' | 'max_tokens' | 'content_filter' | string;
   raw?: unknown;
 };
 

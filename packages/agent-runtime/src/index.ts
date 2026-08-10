@@ -13,4 +13,13 @@ export * from './llm/registry';
 export * from './llm/pricing';
 export * from './llm/http';
 export * from './llm/health';
-export type { LLMMessage, LLMRequest, LLMResponse, LLMProvider } from './llm/types';
+export * from './llm/tooling';
+export type {
+  LLMMessage,
+  LLMRequest,
+  LLMResponse,
+  LLMProvider,
+  LLMToolDefinition,
+  LLMToolCall,
+  LLMToolChoice
+} from './llm/types';
