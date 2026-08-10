@@ -5,7 +5,13 @@ import { getRelevantMemories } from './memory';
 import { resolveExecutionToolDefinitions } from './tools';
 import { runMultiAgentWorkflow } from './agentRouter';
 import type { LLMMessage, LLMToolDefinition } from './llm/types';
-import { executeLLMToolLoop } from './toolExecution';
+import { LLMToolArgumentsError } from './llm/tooling';
+import {
+  executeLLMToolLoop,
+  LLMToolExecutionError,
+  LLMToolLoopLimitError,
+  LLMToolNotAllowedError
+} from './toolExecution';
 import { updateRunTelemetry } from './queue';
 import { persistTraceEvent } from './tracing';
 
@@ -68,6 +74,13 @@ function errorMessage(error: unknown): string {
 
 function normalizeProviderName(provider?: string | null): string {
   return provider?.trim().toLowerCase() || 'openai';
+}
+
+function isToolFailure(error: unknown): boolean {
+  return error instanceof LLMToolNotAllowedError ||
+    error instanceof LLMToolArgumentsError ||
+    error instanceof LLMToolExecutionError ||
+    error instanceof LLMToolLoopLimitError;
 }
 
 export async function runAgent({
@@ -223,6 +236,17 @@ export async function runAgent({
       lastProviderName = result.trace.provider_name ?? lastProviderName;
       lastModelName = result.trace.model_name ?? lastModelName;
     } catch (err) {
+      if (isToolFailure(err)) {
+        void persistEvent('workflow_failed', {
+          workflow: versionWorkflow,
+          provider: selectedProvider,
+          model: selectedModel,
+          error: errorMessage(err),
+          fallback: 'disabled-for-tool-failure'
+        });
+        throw err;
+      }
+
       workflowFailed = true;
       fallbackReason = errorMessage(err);
       console.error('Multi-agent workflow failed, falling back to single-agent:', err);
