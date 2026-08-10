@@ -10,6 +10,12 @@ export type Tool = {
   execute: (args: Record<string, unknown>) => Promise<unknown>;
 };
 
+export type ToolExecutionContext = {
+  ownerUserId?: string | null;
+  agentId?: string | null;
+  conversationId?: string | null;
+};
+
 type ConversationSummaryMessage = {
   role: string;
   content: string;
@@ -33,14 +39,13 @@ type ServerSupabaseClient = ReturnType<typeof createServerSupabaseClient>;
 export const toolList: Tool[] = [
   {
     name: 'search_memory',
-    description: 'Search the conversation memory for relevant user or assistant messages.',
+    description: 'Search the current conversation memory for relevant user or assistant messages.',
     parameters: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: 'Text to search within the conversation memory.' },
-        conversationId: { type: 'string', description: 'Conversation ID associated with the memory search.' }
+        query: { type: 'string', description: 'Text to search within the current conversation memory.' }
       },
-      required: ['query', 'conversationId']
+      required: ['query']
     },
     execute: async (args) => {
       const query = String(args.query);
@@ -50,13 +55,10 @@ export const toolList: Tool[] = [
   },
   {
     name: 'summarize_conversation',
-    description: 'Summarize the conversation history into a compact overview.',
+    description: 'Summarize the current conversation history into a compact overview.',
     parameters: {
       type: 'object',
-      properties: {
-        conversationId: { type: 'string', description: 'Conversation ID to summarize.' }
-      },
-      required: ['conversationId']
+      properties: {}
     },
     execute: async (args) => {
       const conversationId = String(args.conversationId);
@@ -86,10 +88,7 @@ export const toolList: Tool[] = [
     description: 'Fetch metadata about the current agent, including prompt and model details.',
     parameters: {
       type: 'object',
-      properties: {
-        agentId: { type: 'string', description: 'Agent ID to look up.' }
-      },
-      required: ['agentId']
+      properties: {}
     },
     execute: async (args) => {
       const agentId = String(args.agentId);
@@ -269,6 +268,32 @@ export async function resolveExecutionToolDefinitions({
   return Array.from(definitions.values());
 }
 
+function contextualizeBuiltInArgs(
+  toolName: string,
+  args: Record<string, unknown>,
+  context?: ToolExecutionContext
+): Record<string, unknown> {
+  if (toolName === 'search_memory' || toolName === 'summarize_conversation') {
+    const conversationId = context?.conversationId ??
+      (typeof args.conversationId === 'string' ? args.conversationId : undefined);
+    if (!conversationId) {
+      throw new Error(`Tool ${toolName} requires the active conversation context`);
+    }
+    return { ...args, conversationId };
+  }
+
+  if (toolName === 'get_agent_info') {
+    const agentId = context?.agentId ??
+      (typeof args.agentId === 'string' ? args.agentId : undefined);
+    if (!agentId) {
+      throw new Error('Tool get_agent_info requires the active agent context');
+    }
+    return { ...args, agentId };
+  }
+
+  return args;
+}
+
 async function persistToolCall(params: {
   runId: string;
   organizationId?: string | null;
@@ -299,16 +324,18 @@ export async function runTool(
   args: Record<string, unknown>,
   runId?: string,
   organizationId?: string | null,
-  ownerUserId?: string | null
+  context?: ToolExecutionContext
 ) {
   const start = Date.now();
   let status: 'success' | 'failed' = 'success';
   let outputPayload: unknown = {};
+  let inputPayload = args;
 
   try {
     const tool = toolList.find((item) => item.name === name);
     if (tool) {
-      outputPayload = await tool.execute(args);
+      inputPayload = contextualizeBuiltInArgs(name, args, context);
+      outputPayload = await tool.execute(inputPayload);
       return outputPayload;
     }
 
@@ -316,7 +343,7 @@ export async function runTool(
     const registryTool = chooseAccessibleRegistryTool(
       await queryRegistryTools(supabase, 'slug', name),
       organizationId,
-      ownerUserId
+      context?.ownerUserId
     );
     if (!registryTool) throw new Error(`Tool not found or not allowed: ${name}`);
 
@@ -353,7 +380,7 @@ export async function runTool(
         toolName: name,
         status,
         latencyMs: Date.now() - start,
-        inputPayload: args,
+        inputPayload,
         outputPayload
       });
     }
