@@ -1,8 +1,11 @@
 import { NextRequest } from 'next/server';
 import { headers, cookies } from 'next/headers';
 import { createRouteHandlerSupabaseClient } from '@supabase/auth-helpers-nextjs';
-import { abortActiveRun } from '@agent-workbench/agent-runtime';
-import { agentRuns, createServerSupabaseClient } from '@agent-workbench/sdk';
+import {
+  abortActiveAgentRun,
+  agentRuns,
+  createServerSupabaseClient
+} from '@agent-workbench/sdk';
 
 function errorStatus(message: string) {
   if (message.startsWith('Not authorized')) return 403;
@@ -39,7 +42,7 @@ async function handlePost(
 
     // Best effort for deployments where the route and executor share a process.
     // The database state remains authoritative for cross-process cancellation.
-    abortActiveRun(body.runId, reason);
+    abortActiveAgentRun(body.runId, reason);
 
     return new Response(JSON.stringify({ run }), {
       status: 200,
