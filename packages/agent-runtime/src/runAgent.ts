@@ -277,7 +277,7 @@ export async function runAgent({
       input_tokens: totalPromptTokens,
       output_tokens: totalCompletionTokens,
       total_tokens: totalTokens,
-      estimated_cost: totalEstimatedCost,
+      estimated_cost: totalEstimatedCost ?? undefined,
       latency_ms: totalLatencyMs,
       model_name: lastModelName ?? null
     });
