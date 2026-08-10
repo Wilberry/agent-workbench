@@ -16,8 +16,10 @@ export type ExecutionTrace = {
   prompt_tokens?: number;
   completion_tokens?: number;
   total_tokens?: number;
-  estimated_cost?: number;
+  estimated_cost?: number | null;
   latency_ms?: number;
+  workflow_failed?: boolean;
+  fallback_reason?: string;
 };
 
 function formatMemoryContext(memories: Array<{ role: 'user' | 'assistant'; content: string; similarity: number }>) {
@@ -72,6 +74,17 @@ function parseToolCall(text: string) {
   } catch {
     return null;
   }
+}
+
+function addEstimatedCost(total: number | null, next: number | null): number | null {
+  if (total === null || next === null) {
+    return null;
+  }
+  return total + next;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export async function runAgent({
@@ -155,11 +168,12 @@ export async function runAgent({
   let totalPromptTokens = 0;
   let totalCompletionTokens = 0;
   let totalTokens = 0;
-  let totalEstimatedCost = 0;
+  let totalEstimatedCost: number | null = 0;
   let totalLatencyMs = 0;
   let lastModelName: string | undefined;
+  let workflowFailed = false;
+  let fallbackReason: string | undefined;
 
-  // If a version workflow is present, delegate to the multi-agent router
   if (Array.isArray(versionWorkflow) && versionWorkflow.length > 0) {
     const { data: userInfo } = await supabase.auth.getUser();
     const userId = userInfo?.user?.id ?? '';
@@ -176,24 +190,35 @@ export async function runAgent({
 
       finalAssistantResponse = result.message;
       void persistEvent('run_completed', { model_name: result.trace.model_name, trace: result.trace });
-      // merge trace info
       toolsCalled.push(...(result.trace.toolsCalled || []));
       modelIterations = result.trace.modelIterations || modelIterations;
       totalPromptTokens = result.trace.prompt_tokens ?? totalPromptTokens;
       totalCompletionTokens = result.trace.completion_tokens ?? totalCompletionTokens;
       totalTokens = result.trace.total_tokens ?? totalTokens;
-      totalEstimatedCost = result.trace.estimated_cost ?? totalEstimatedCost;
+      if (result.trace.estimated_cost !== undefined) {
+        totalEstimatedCost = result.trace.estimated_cost;
+      }
       totalLatencyMs = result.trace.latency_ms ?? totalLatencyMs;
       lastModelName = result.trace.model_name ?? lastModelName;
     } catch (err) {
+      workflowFailed = true;
+      fallbackReason = errorMessage(err);
       console.error('Multi-agent workflow failed, falling back to single-agent:', err);
+      void persistEvent('workflow_failed', {
+        workflow: versionWorkflow,
+        error: fallbackReason,
+        fallback: 'single-agent'
+      });
     }
   }
 
-  // Fallback to single-agent loop if multi-agent did not produce a result
   if (!finalAssistantResponse) {
     let currentMessages = [...messageBatch];
-    void persistEvent('run_started', { workflow: ['single-agent'], message: userMessage });
+    void persistEvent('run_started', {
+      workflow: ['single-agent'],
+      message: userMessage,
+      fallback: workflowFailed
+    });
     for (let iteration = 0; iteration < 3; iteration += 1) {
       modelIterations += 1;
       const assistantResult = await chatCompletion({
@@ -205,7 +230,7 @@ export async function runAgent({
       totalPromptTokens += assistantResult.prompt_tokens;
       totalCompletionTokens += assistantResult.completion_tokens;
       totalTokens += assistantResult.total_tokens;
-      totalEstimatedCost += assistantResult.estimated_cost;
+      totalEstimatedCost = addEstimatedCost(totalEstimatedCost, assistantResult.estimated_cost);
       totalLatencyMs += assistantResult.latency_ms;
       lastModelName = assistantResult.model_name;
 
@@ -224,8 +249,7 @@ export async function runAgent({
       const toolResultText = JSON.stringify(toolResult, null, 2);
 
       currentMessages.push({ role: 'assistant', content: assistantResponse });
-      currentMessages.push({ role: 'system', content: `Tool ${toolCall.name} executed. Result:
-${toolResultText}` });
+      currentMessages.push({ role: 'system', content: `Tool ${toolCall.name} executed. Result:\n${toolResultText}` });
       currentMessages.push({ role: 'user', content: 'Continue the response using the tool result above.' });
     }
   }
@@ -243,7 +267,9 @@ ${toolResultText}` });
     completion_tokens: totalCompletionTokens,
     total_tokens: totalTokens,
     estimated_cost: totalEstimatedCost,
-    latency_ms: totalLatencyMs
+    latency_ms: totalLatencyMs,
+    workflow_failed: workflowFailed || undefined,
+    fallback_reason: fallbackReason
   };
 
   if (runId) {
