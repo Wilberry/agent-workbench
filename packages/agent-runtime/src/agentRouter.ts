@@ -1,5 +1,5 @@
 import { chatCompletion } from './llm/client';
-import type { LLMMessage, LLMResponse, LLMToolDefinition } from './llm/types';
+import type { LLMMessage, LLMResponse, LLMStreamEvent, LLMToolDefinition } from './llm/types';
 import { getBuiltInToolDefinitions } from './tools';
 import { executeLLMToolLoop } from './toolExecution';
 
@@ -16,6 +16,12 @@ export type ExecutionTrace = {
   estimated_cost?: number;
   latency_ms?: number;
   steps?: Array<{ name: string; latency?: number; input?: unknown; output?: unknown }>;
+};
+
+export type AgentWorkflowStreamEvent = {
+  role: string;
+  modelIteration: number;
+  event: LLMStreamEvent;
 };
 
 type MemorySnippet = {
@@ -36,6 +42,7 @@ type AgentWorkflowInput = {
   organizationId?: string | null;
   ownerUserId?: string | null;
   tools?: LLMToolDefinition[];
+  onStreamEvent?: (event: AgentWorkflowStreamEvent) => void | Promise<void>;
 };
 
 export type AgentWorkflowResult = {
@@ -101,7 +108,8 @@ export async function runMultiAgentWorkflow(
     runId,
     organizationId,
     ownerUserId,
-    tools
+    tools,
+    onStreamEvent
   }: AgentWorkflowInput,
   modelOverride?: string,
   providerOverride = 'openai'
@@ -145,6 +153,13 @@ export async function runMultiAgentWorkflow(
       agentId,
       conversationId,
       maxToolRounds: 2,
+      onStreamEvent: onStreamEvent
+        ? (event, context) => onStreamEvent({
+            role,
+            modelIteration: context.modelIteration,
+            event
+          })
+        : undefined,
       onToolExecuted(record) {
         steps.push({
           name: `tool:${record.call.name}`,

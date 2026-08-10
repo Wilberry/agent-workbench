@@ -4,7 +4,7 @@ import { generateEmbedding } from './embeddings';
 import { getRelevantMemories } from './memory';
 import { resolveExecutionToolDefinitions } from './tools';
 import { runMultiAgentWorkflow } from './agentRouter';
-import type { LLMMessage, LLMToolDefinition } from './llm/types';
+import type { LLMMessage, LLMStreamEvent, LLMToolDefinition } from './llm/types';
 import { LLMToolArgumentsError } from './llm/tooling';
 import {
   executeLLMToolLoop,
@@ -29,6 +29,34 @@ export type ExecutionTrace = {
   latency_ms?: number;
   workflow_failed?: boolean;
   fallback_reason?: string;
+};
+
+export type AgentRunModelStreamEvent = {
+  type: 'model_event';
+  step: string;
+  modelIteration: number;
+  event: LLMStreamEvent;
+};
+
+export type AgentRunStreamEvent =
+  | AgentRunModelStreamEvent
+  | { type: 'run_end'; content: string }
+  | {
+      type: 'run_error';
+      error: {
+        name: string;
+        message: string;
+        code?: string;
+      };
+    };
+
+export type RunAgentInput = {
+  agentId: string;
+  conversationId: string;
+  userMessage: string;
+  debug?: boolean;
+  runId?: string;
+  onStreamEvent?: (event: AgentRunModelStreamEvent) => void | Promise<void>;
 };
 
 function formatMemoryContext(memories: Array<{ role: 'user' | 'assistant'; content: string; similarity: number }>) {
@@ -90,14 +118,9 @@ export async function runAgent({
   conversationId,
   userMessage,
   debug = false,
-  runId
-}: {
-  agentId: string;
-  conversationId: string;
-  userMessage: string;
-  debug?: boolean;
-  runId?: string;
-}) {
+  runId,
+  onStreamEvent
+}: RunAgentInput) {
   const supabase = createServerSupabaseClient();
 
   const { agent, latestVersion } = await agents.getAgentForExecution(agentId, supabase);
@@ -219,7 +242,15 @@ export async function runAgent({
         runId,
         organizationId: agent.organization_id,
         ownerUserId,
-        tools: availableTools
+        tools: availableTools,
+        onStreamEvent: onStreamEvent
+          ? ({ role, modelIteration, event }) => onStreamEvent({
+              type: 'model_event',
+              step: role,
+              modelIteration,
+              event
+            })
+          : undefined
       }, selectedModel, selectedProvider);
 
       finalAssistantResponse = result.message;
@@ -282,6 +313,14 @@ export async function runAgent({
       agentId,
       conversationId,
       maxToolRounds: 2,
+      onStreamEvent: onStreamEvent
+        ? (event, context) => onStreamEvent({
+            type: 'model_event',
+            step: 'single-agent',
+            modelIteration: context.modelIteration,
+            event
+          })
+        : undefined,
       onToolExecuted(record) {
         void persistEvent('tool_call', {
           name: record.call.name,
@@ -376,6 +415,75 @@ export async function runAgent({
     headers: {
       'Content-Type': 'text/plain; charset=utf-8',
       'Cache-Control': 'no-store'
+    }
+  });
+}
+
+function serializeSSE(event: AgentRunStreamEvent): string {
+  return `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
+}
+
+function streamError(error: unknown): AgentRunStreamEvent {
+  const candidate = error as { name?: unknown; message?: unknown; code?: unknown };
+  return {
+    type: 'run_error',
+    error: {
+      name: typeof candidate?.name === 'string' ? candidate.name : 'Error',
+      message: errorMessage(error),
+      ...(typeof candidate?.code === 'string' ? { code: candidate.code } : {})
+    }
+  };
+}
+
+export function runAgentEventStream(input: Omit<RunAgentInput, 'debug' | 'onStreamEvent'>): Response {
+  const encoder = new TextEncoder();
+  let cancelled = false;
+
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const emit = (event: AgentRunStreamEvent) => {
+        if (cancelled) return;
+        try {
+          controller.enqueue(encoder.encode(serializeSSE(event)));
+        } catch {
+          cancelled = true;
+        }
+      };
+
+      void (async () => {
+        try {
+          const response = await runAgent({
+            ...input,
+            debug: false,
+            onStreamEvent(event) {
+              emit(event);
+            }
+          });
+          const content = await response.text();
+          emit({ type: 'run_end', content });
+        } catch (error) {
+          emit(streamError(error));
+        } finally {
+          if (!cancelled) {
+            try {
+              controller.close();
+            } catch {
+              cancelled = true;
+            }
+          }
+        }
+      })();
+    },
+    cancel() {
+      cancelled = true;
+    }
+  });
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive'
     }
   });
 }

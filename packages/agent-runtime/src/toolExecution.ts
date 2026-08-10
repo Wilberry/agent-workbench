@@ -1,8 +1,10 @@
-import { chatCompletion } from './llm/client';
+import { chatCompletion, streamChatCompletion } from './llm/client';
+import { collectLLMStream } from './llm/stream';
 import type {
   LLMMessage,
   LLMRequest,
   LLMResponse,
+  LLMStreamEvent,
   LLMToolCall,
   LLMToolDefinition
 } from './llm/types';
@@ -83,7 +85,12 @@ export type LLMToolLoopResult = LLMToolLoopAggregate & {
   legacyFallbackUsed: boolean;
 };
 
+export type LLMToolLoopStreamContext = {
+  modelIteration: number;
+};
+
 type Complete = (request: LLMRequest) => Promise<LLMResponse>;
+type Stream = (request: LLMRequest) => AsyncIterable<LLMStreamEvent>;
 type ExecuteTool = (
   name: string,
   args: Record<string, unknown>,
@@ -109,8 +116,13 @@ type ExecuteLLMToolLoopInput = {
     response: LLMResponse,
     aggregate: LLMToolLoopAggregate
   ) => void | Promise<void>;
+  onStreamEvent?: (
+    event: LLMStreamEvent,
+    context: LLMToolLoopStreamContext
+  ) => void | Promise<void>;
   onToolExecuted?: (record: ToolExecutionRecord) => void | Promise<void>;
   complete?: Complete;
+  stream?: Stream;
   executeTool?: ExecuteTool;
 };
 
@@ -165,8 +177,10 @@ export async function executeLLMToolLoop({
   max_tokens = 1200,
   maxToolRounds = 2,
   onModelResponse,
+  onStreamEvent,
   onToolExecuted,
   complete = chatCompletion,
+  stream,
   executeTool = runTool
 }: ExecuteLLMToolLoopInput): Promise<LLMToolLoopResult> {
   if (!Number.isInteger(maxToolRounds) || maxToolRounds < 0) {
@@ -196,17 +210,30 @@ export async function executeLLMToolLoop({
   let legacyFallbackUsed = false;
 
   while (true) {
+    const request: LLMRequest = {
+      provider,
+      model,
+      messages: currentMessages,
+      temperature,
+      max_tokens,
+      tools: tools.length > 0 ? tools : undefined,
+      tool_choice: tools.length > 0 ? 'auto' : undefined
+    };
+
     let response: LLMResponse;
     try {
-      response = await complete({
-        provider,
-        model,
-        messages: currentMessages,
-        temperature,
-        max_tokens,
-        tools: tools.length > 0 ? tools : undefined,
-        tool_choice: tools.length > 0 ? 'auto' : undefined
-      });
+      const streamImpl = stream ?? (onStreamEvent ? streamChatCompletion : undefined);
+      if (streamImpl) {
+        const iteration = modelIterations + 1;
+        response = await collectLLMStream(
+          streamImpl(request),
+          onStreamEvent
+            ? (event) => onStreamEvent(event, { modelIteration: iteration })
+            : undefined
+        );
+      } else {
+        response = await complete(request);
+      }
     } catch (error) {
       if (toolExecutions.length > 0) {
         throw new LLMToolContinuationError(toolExecutions.length, error);

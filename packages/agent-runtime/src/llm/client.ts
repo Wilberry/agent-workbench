@@ -1,4 +1,10 @@
-import type { LLMRequest, LLMResponse, LLMProvider } from './types';
+import type {
+  LLMProvider,
+  LLMRequest,
+  LLMResponse,
+  LLMStreamEvent
+} from './types';
+import { LLMStreamProtocolError } from './stream';
 import {
   getLLMProviderRegistration,
   normalizeProviderName
@@ -51,15 +57,101 @@ function getProvider(provider?: string): LLMProvider {
   return registration.provider;
 }
 
-export async function chatCompletion(request: LLMRequest): Promise<LLMResponse> {
-  const provider = getProvider(request.provider);
-  const response = await provider.chatCompletion({
+function normalizedRequest(request: LLMRequest): LLMRequest {
+  return {
     ...request,
     provider: normalizeProviderName(request.provider)
-  });
+  };
+}
+
+export async function chatCompletion(request: LLMRequest): Promise<LLMResponse> {
+  const provider = getProvider(request.provider);
+  const response = await provider.chatCompletion(normalizedRequest(request));
 
   return {
     ...response,
     provider_name: response.provider_name ?? normalizeProviderName(provider.name)
   };
+}
+
+export async function* streamChatCompletion(
+  request: LLMRequest
+): AsyncIterable<LLMStreamEvent> {
+  const provider = getProvider(request.provider);
+  const providerName = normalizeProviderName(provider.name);
+  const normalized = normalizedRequest(request);
+
+  if (provider.streamChatCompletion) {
+    let completed = false;
+    for await (const event of provider.streamChatCompletion(normalized)) {
+      if (event.type === 'response_start') {
+        yield {
+          ...event,
+          provider_name: event.provider_name || providerName
+        };
+        continue;
+      }
+
+      if (event.type === 'response_end') {
+        completed = true;
+        yield {
+          ...event,
+          response: {
+            ...event.response,
+            provider_name: event.response.provider_name ?? providerName
+          }
+        };
+        continue;
+      }
+
+      yield event;
+    }
+
+    if (!completed) {
+      throw new LLMStreamProtocolError(
+        providerName,
+        'provider stream ended without response_end'
+      );
+    }
+    return;
+  }
+
+  // Providers without native streaming stay source-compatible. They emit one
+  // normalized text/tool burst around the existing buffered response.
+  const response = await provider.chatCompletion(normalized);
+  const finalResponse: LLMResponse = {
+    ...response,
+    provider_name: response.provider_name ?? providerName
+  };
+
+  yield {
+    type: 'response_start',
+    provider_name: finalResponse.provider_name ?? providerName,
+    model_name: finalResponse.model_name
+  };
+
+  if (finalResponse.content) {
+    yield { type: 'text_delta', delta: finalResponse.content };
+  }
+
+  for (const [index, call] of (finalResponse.tool_calls ?? []).entries()) {
+    yield {
+      type: 'tool_call_start',
+      index,
+      id: call.id,
+      name: call.name
+    };
+    yield { type: 'tool_call_end', index, call };
+  }
+
+  yield {
+    type: 'usage',
+    usage: {
+      prompt_tokens: finalResponse.prompt_tokens,
+      completion_tokens: finalResponse.completion_tokens,
+      total_tokens: finalResponse.total_tokens
+    },
+    estimated_cost: finalResponse.estimated_cost
+  };
+  yield { type: 'response_end', response: finalResponse };
 }
