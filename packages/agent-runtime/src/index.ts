@@ -10,4 +10,5 @@ export * from './evaluationWorker';
 export * from './worker';
 export * from './llm/client';
 export * from './llm/registry';
+export * from './llm/pricing';
 export type { LLMMessage, LLMRequest, LLMResponse, LLMProvider } from './llm/types';

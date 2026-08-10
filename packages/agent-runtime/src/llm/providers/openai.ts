@@ -50,7 +50,7 @@ export const openaiProvider: LLMProvider = {
     const content = extractContent(payload);
     const pricingProvider = getPricingProvider();
     const modelName = payload?.model ?? request.model;
-    const estimated_cost = pricingProvider.estimateCost(modelName, usage);
+    const estimated_cost = pricingProvider.estimateCost(modelName, usage, 'openai');
 
     return {
       content,
