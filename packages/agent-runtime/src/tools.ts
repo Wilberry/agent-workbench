@@ -21,6 +21,7 @@ type RegistryToolRow = {
   name: string;
   slug: string;
   description: string | null;
+  entrypoint: string;
   input_schema: unknown;
   public: boolean | null;
   created_by: string | null;
@@ -150,6 +151,20 @@ function registryScopeRank(
   return 3;
 }
 
+function chooseAccessibleRegistryTool(
+  tools: RegistryToolRow[],
+  organizationId?: string | null,
+  ownerUserId?: string | null
+): RegistryToolRow | null {
+  return tools
+    .filter((tool) => canAccessRegistryTool(tool, organizationId, ownerUserId))
+    .sort(
+      (a, b) =>
+        registryScopeRank(a, organizationId, ownerUserId) -
+        registryScopeRank(b, organizationId, ownerUserId)
+    )[0] ?? null;
+}
+
 function registryDefinition(tool: RegistryToolRow): LLMToolDefinition {
   return {
     name: tool.slug,
@@ -167,7 +182,7 @@ async function queryRegistryTools(
 ): Promise<RegistryToolRow[]> {
   const { data, error } = await client
     .from('tools')
-    .select('id, org_id, name, slug, description, input_schema, public, created_by')
+    .select('id, org_id, name, slug, description, entrypoint, input_schema, public, created_by')
     .eq(field, value)
     .limit(20);
 
@@ -195,15 +210,8 @@ async function resolveRegistryReference(
 
   const candidates = Array.from(
     new Map(candidateGroups.flat().map((tool) => [tool.id, tool])).values()
-  )
-    .filter((tool) => canAccessRegistryTool(tool, organizationId, ownerUserId))
-    .sort(
-      (a, b) =>
-        registryScopeRank(a, organizationId, ownerUserId) -
-        registryScopeRank(b, organizationId, ownerUserId)
-    );
-
-  return candidates[0] ?? null;
+  );
+  return chooseAccessibleRegistryTool(candidates, organizationId, ownerUserId);
 }
 
 export async function resolveExecutionToolDefinitions({
@@ -290,7 +298,8 @@ export async function runTool(
   name: string,
   args: Record<string, unknown>,
   runId?: string,
-  organizationId?: string | null
+  organizationId?: string | null,
+  ownerUserId?: string | null
 ) {
   const start = Date.now();
   let status: 'success' | 'failed' = 'success';
@@ -304,11 +313,14 @@ export async function runTool(
     }
 
     const supabase = createServerSupabaseClient();
-    const { data: registryTool, error } = await supabase.from('tools').select('*').eq('slug', name).maybeSingle();
-    if (error) throw error;
-    if (!registryTool) throw new Error(`Tool not found: ${name}`);
+    const registryTool = chooseAccessibleRegistryTool(
+      await queryRegistryTools(supabase, 'slug', name),
+      organizationId,
+      ownerUserId
+    );
+    if (!registryTool) throw new Error(`Tool not found or not allowed: ${name}`);
 
-    const entrypoint: string = registryTool.entrypoint;
+    const entrypoint = registryTool.entrypoint;
     if (entrypoint && entrypoint.startsWith('http')) {
       const res = await fetch(entrypoint, {
         method: 'POST',
