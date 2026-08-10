@@ -4,7 +4,10 @@ import {
   LLMConfigurationError,
   UnsupportedLLMProviderError
 } from '@agent-workbench/agent-runtime/llm/client';
-import { getPricingProvider } from '@agent-workbench/agent-runtime/llm/pricing';
+import {
+  getPricingProvider,
+  UnknownModelPricingError
+} from '@agent-workbench/agent-runtime/llm/pricing';
 
 const managedVariables = ['OPENAI_API_KEY', 'USE_MOCK_OPENAI'] as const;
 const originalEnvironment = Object.fromEntries(
@@ -50,23 +53,23 @@ describe('LLM runtime stabilization', () => {
     ).rejects.toBeInstanceOf(UnsupportedLLMProviderError);
   });
 
-  it('returns null when model pricing is unknown', () => {
+  it('rejects unknown model pricing instead of reporting zero cost', () => {
     const pricing = getPricingProvider();
 
-    expect(
+    expect(() =>
       pricing.estimateCost('unknown-model', {
         prompt_tokens: 100,
         completion_tokens: 50,
         total_tokens: 150
       })
-    ).toBeNull();
+    ).toThrow(UnknownModelPricingError);
   });
 
-  it('still estimates cost for catalogued models', () => {
+  it('recognizes dated variants of catalogued OpenAI models', () => {
     const pricing = getPricingProvider();
 
     expect(
-      pricing.estimateCost('gpt-4o-mini', {
+      pricing.estimateCost('gpt-4o-mini-2024-07-18', {
         prompt_tokens: 100,
         completion_tokens: 50,
         total_tokens: 150
