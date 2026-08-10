@@ -8,12 +8,22 @@ import type { LLMMessage, LLMStreamEvent, LLMToolDefinition } from './llm/types'
 import { LLMToolArgumentsError } from './llm/tooling';
 import {
   executeLLMToolLoop,
+  LLMToolCheckpointError,
   LLMToolContinuationError,
   LLMToolExecutionError,
   LLMToolLoopLimitError,
   LLMToolNotAllowedError
 } from './toolExecution';
-import { updateRunTelemetry } from './queue';
+import {
+  isAgentExecutionCancelledError,
+  registerActiveRun,
+  throwIfAborted
+} from './cancellation';
+import {
+  markQueueJobCancelled,
+  markRunCancelled,
+  updateRunTelemetry
+} from './queue';
 import { persistTraceEvent } from './tracing';
 
 export type ExecutionTrace = {
@@ -41,6 +51,7 @@ export type AgentRunModelStreamEvent = {
 export type AgentRunStreamEvent =
   | AgentRunModelStreamEvent
   | { type: 'run_end'; content: string }
+  | { type: 'run_cancelled'; reason: string }
   | {
       type: 'run_error';
       error: {
@@ -56,6 +67,7 @@ export type RunAgentInput = {
   userMessage: string;
   debug?: boolean;
   runId?: string;
+  signal?: AbortSignal;
   onStreamEvent?: (event: AgentRunModelStreamEvent) => void | Promise<void>;
 };
 
@@ -110,6 +122,7 @@ function isToolFailure(error: unknown): boolean {
     error instanceof LLMToolArgumentsError ||
     error instanceof LLMToolExecutionError ||
     error instanceof LLMToolContinuationError ||
+    error instanceof LLMToolCheckpointError ||
     error instanceof LLMToolLoopLimitError;
 }
 
@@ -119,8 +132,10 @@ export async function runAgent({
   userMessage,
   debug = false,
   runId,
+  signal,
   onStreamEvent
 }: RunAgentInput) {
+  throwIfAborted(signal);
   const supabase = createServerSupabaseClient();
 
   const { agent, latestVersion } = await agents.getAgentForExecution(agentId, supabase);
@@ -130,6 +145,7 @@ export async function runAgent({
     void persistTraceEvent(runId, eventType, payload).catch((err) => console.warn('Failed to persist trace event', err));
   };
 
+  throwIfAborted(signal);
   const { data: userMessageRow, error: userMessageError } = await supabase
     .from('messages')
     .insert([{ conversation_id: conversationId, role: 'user', content: userMessage }])
@@ -154,11 +170,11 @@ export async function runAgent({
     .eq('conversation_id', conversationId)
     .order('created_at', { ascending: true });
 
-  if (historyError) {
-    throw historyError;
-  }
+  if (historyError) throw historyError;
+  throwIfAborted(signal);
 
   const memories = await getRelevantMemories({ conversationId, query: userMessage });
+  throwIfAborted(signal);
   const memoryContext = formatMemoryContext(memories);
   const conversationHistory: LLMMessage[] = ((history ?? []) as Message[]).map((message) => ({
     role: message.role,
@@ -195,6 +211,7 @@ export async function runAgent({
     ownerUserId = fullAgent?.user_id ?? null;
   }
 
+  throwIfAborted(signal);
   const availableTools = await resolveExecutionToolDefinitions({
     versionTools,
     organizationId: agent.organization_id,
@@ -225,6 +242,7 @@ export async function runAgent({
     const { data: userInfo } = await supabase.auth.getUser();
     const userId = userInfo?.user?.id ?? '';
     try {
+      throwIfAborted(signal);
       void persistEvent('run_started', {
         workflow: versionWorkflow,
         message: userMessage,
@@ -243,6 +261,7 @@ export async function runAgent({
         organizationId: agent.organization_id,
         ownerUserId,
         tools: availableTools,
+        signal,
         onStreamEvent: onStreamEvent
           ? ({ role, modelIteration, event }) => onStreamEvent({
               type: 'model_event',
@@ -269,6 +288,7 @@ export async function runAgent({
       lastProviderName = result.trace.provider_name ?? lastProviderName;
       lastModelName = result.trace.model_name ?? lastModelName;
     } catch (err) {
+      if (isAgentExecutionCancelledError(err)) throw err;
       if (isToolFailure(err)) {
         void persistEvent('workflow_failed', {
           workflow: versionWorkflow,
@@ -294,6 +314,7 @@ export async function runAgent({
   }
 
   if (!finalAssistantResponse) {
+    throwIfAborted(signal);
     void persistEvent('run_started', {
       workflow: ['single-agent'],
       message: userMessage,
@@ -313,6 +334,7 @@ export async function runAgent({
       agentId,
       conversationId,
       maxToolRounds: 2,
+      signal,
       onStreamEvent: onStreamEvent
         ? (event, context) => onStreamEvent({
             type: 'model_event',
@@ -343,6 +365,7 @@ export async function runAgent({
     lastModelName = result.model_name ?? lastModelName;
   }
 
+  throwIfAborted(signal);
   if (!finalAssistantResponse) {
     finalAssistantResponse = 'I was unable to complete the task after multiple tool executions.';
   }
@@ -374,6 +397,7 @@ export async function runAgent({
     });
   }
 
+  throwIfAborted(signal);
   if (debug) {
     return new Response(JSON.stringify({ response: finalAssistantResponse, trace }), {
       headers: { 'Content-Type': 'application/json' }
@@ -410,6 +434,7 @@ export async function runAgent({
   }
 
   await userEmbeddingPromise;
+  throwIfAborted(signal);
 
   return new Response(textStream, {
     headers: {
@@ -435,18 +460,43 @@ function streamError(error: unknown): AgentRunStreamEvent {
   };
 }
 
-export function runAgentEventStream(input: Omit<RunAgentInput, 'debug' | 'onStreamEvent'>): Response {
+async function persistCancellation(runId: string | undefined, reason: string): Promise<void> {
+  if (!runId) return;
+  await Promise.allSettled([
+    markRunCancelled(runId, reason),
+    markQueueJobCancelled(runId, reason)
+  ]);
+}
+
+export function runAgentEventStream(
+  input: Omit<RunAgentInput, 'debug' | 'onStreamEvent' | 'signal'> & { signal?: AbortSignal }
+): Response {
   const encoder = new TextEncoder();
-  let cancelled = false;
+  const executionController = new AbortController();
+  let deliveryClosed = false;
+  let unregisterActive = () => {};
+
+  if (input.signal) {
+    if (input.signal.aborted) {
+      executionController.abort(input.signal.reason);
+    } else {
+      const abortFromCaller = () => executionController.abort(input.signal?.reason);
+      input.signal.addEventListener('abort', abortFromCaller, { once: true });
+    }
+  }
+
+  if (input.runId) {
+    unregisterActive = registerActiveRun(input.runId, executionController);
+  }
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       const emit = (event: AgentRunStreamEvent) => {
-        if (cancelled) return;
+        if (deliveryClosed) return;
         try {
           controller.enqueue(encoder.encode(serializeSSE(event)));
         } catch {
-          cancelled = true;
+          deliveryClosed = true;
         }
       };
 
@@ -455,6 +505,7 @@ export function runAgentEventStream(input: Omit<RunAgentInput, 'debug' | 'onStre
           const response = await runAgent({
             ...input,
             debug: false,
+            signal: executionController.signal,
             onStreamEvent(event) {
               emit(event);
             }
@@ -462,20 +513,35 @@ export function runAgentEventStream(input: Omit<RunAgentInput, 'debug' | 'onStre
           const content = await response.text();
           emit({ type: 'run_end', content });
         } catch (error) {
-          emit(streamError(error));
+          if (isAgentExecutionCancelledError(error)) {
+            const reason = error.message || 'Agent execution cancelled';
+            await persistCancellation(input.runId, reason);
+            emit({ type: 'run_cancelled', reason });
+          } else {
+            emit(streamError(error));
+          }
         } finally {
-          if (!cancelled) {
+          unregisterActive();
+          if (!deliveryClosed) {
             try {
               controller.close();
             } catch {
-              cancelled = true;
+              deliveryClosed = true;
             }
           }
         }
       })();
     },
-    cancel() {
-      cancelled = true;
+    cancel(reason) {
+      deliveryClosed = true;
+      const cancellationMessage = typeof reason === 'string' && reason.trim()
+        ? reason.trim()
+        : 'Client disconnected';
+      if (!executionController.signal.aborted) {
+        executionController.abort(cancellationMessage);
+      }
+      void persistCancellation(input.runId, cancellationMessage);
+      unregisterActive();
     }
   });
 
