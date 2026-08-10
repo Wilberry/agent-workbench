@@ -92,7 +92,7 @@ export class LLMToolCheckpointError extends Error {
     cause: unknown
   ) {
     super(
-      `Tool continuation checkpoint failed after ${completedToolCalls} completed tool call(s): ${cause instanceof Error ? cause.message : String(cause)}`,
+      `Execution checkpoint failed after ${completedToolCalls} completed tool call(s): ${cause instanceof Error ? cause.message : String(cause)}`,
       { cause }
     );
     this.name = 'LLMToolCheckpointError';
@@ -542,7 +542,7 @@ export async function executeLLMToolLoop({
     }
 
     await ensureActive();
-    await persistCheckpoint('complete', response.content, false);
+    await persistCheckpoint('complete', response.content, Boolean(onCheckpoint));
 
     return {
       content: response.content,
