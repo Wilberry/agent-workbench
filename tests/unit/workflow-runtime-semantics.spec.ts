@@ -7,6 +7,7 @@ import {
   LLMToolCheckpointError,
   LLMToolContinuationError,
   LLMToolExecutionError,
+  LLMToolNotAllowedError,
   rebuildWorkflowEpisode,
   requestWithProviderReliability,
   type LLMRequest,
@@ -136,6 +137,7 @@ describe('tool-loop resumability boundary', () => {
     expect(captured).toBeInstanceOf(LLMToolContinuationError);
     expect((captured as LLMToolContinuationError).resumeSafe).toBe(true);
     expect((captured as LLMToolContinuationError).checkpoint).toEqual(persisted);
+    expect(persisted?.phase).toBe('continuation');
     expect(persisted?.messages).toEqual(expect.arrayContaining([
       expect.objectContaining({ role: 'assistant', tool_calls: expect.any(Array) }),
       expect.objectContaining({ role: 'tool', tool_call_id: 'call_1' })
@@ -198,6 +200,68 @@ describe('tool-loop resumability boundary', () => {
     expect(result.estimated_cost).toBeCloseTo(0.003);
   });
 
+  it('reuses a completed durable checkpoint without calling the provider again', async () => {
+    const firstComplete = vi.fn(async (_request: LLMRequest) => response({
+      content: 'Durably finished.',
+      stop_reason: 'stop'
+    }));
+    let checkpoint: LLMToolLoopCheckpoint | undefined;
+
+    const firstResult = await executeLLMToolLoop({
+      provider: 'openai',
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: 'finish once' }],
+      tools: [],
+      complete: firstComplete,
+      onCheckpoint(value) {
+        checkpoint = value;
+      }
+    });
+
+    expect(firstResult.content).toBe('Durably finished.');
+    expect(checkpoint?.phase).toBe('complete');
+    expect(checkpoint?.final_content).toBe('Durably finished.');
+
+    const shouldNotCallProvider = vi.fn(async (_request: LLMRequest) => {
+      throw new Error('provider should not be called');
+    });
+    const resumed = await executeLLMToolLoop({
+      provider: 'openai',
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: 'ignored' }],
+      tools: [],
+      resumeFrom: checkpoint!,
+      complete: shouldNotCallProvider
+    });
+
+    expect(shouldNotCallProvider).not.toHaveBeenCalled();
+    expect(resumed.content).toBe('Durably finished.');
+    expect(resumed.total_tokens).toBe(15);
+  });
+
+  it('requires the final output checkpoint for durable execution', async () => {
+    const complete = vi.fn(async (_request: LLMRequest) => response({
+      content: 'Generated once.',
+      stop_reason: 'stop'
+    }));
+
+    await expect(executeLLMToolLoop({
+      provider: 'openai',
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: 'finish' }],
+      tools: [],
+      complete,
+      onCheckpoint() {
+        throw new Error('database unavailable');
+      }
+    })).rejects.toMatchObject({
+      code: 'LLM_TOOL_CHECKPOINT_FAILED',
+      completedToolCalls: 0
+    });
+
+    expect(complete).toHaveBeenCalledTimes(1);
+  });
+
   it('makes checkpoint persistence failure terminal after a completed tool', async () => {
     const complete = vi.fn(async (_request: LLMRequest) => response({
       stop_reason: 'tool_use',
@@ -253,6 +317,35 @@ describe('tool-loop resumability boundary', () => {
     expect(captured).toBeInstanceOf(LLMToolExecutionError);
     expect((captured as LLMToolExecutionError).completedToolCalls).toBe(1);
     expect(onCheckpoint).not.toHaveBeenCalled();
+  });
+
+  it('rejects a persisted checkpoint that references a tool outside the current allowlist', async () => {
+    const checkpoint: LLMToolLoopCheckpoint = {
+      version: 1,
+      phase: 'continuation',
+      provider: 'openai',
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: 'continue' }],
+      toolRounds: 1,
+      toolsCalled: ['get_agent_info'],
+      completedToolCalls: 1,
+      modelIterations: 1,
+      prompt_tokens: 10,
+      completion_tokens: 5,
+      total_tokens: 15,
+      estimated_cost: 0.001,
+      latency_ms: 20,
+      legacyFallbackUsed: false
+    };
+
+    await expect(executeLLMToolLoop({
+      provider: 'openai',
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: 'ignored' }],
+      tools: [tool],
+      resumeFrom: checkpoint,
+      complete: vi.fn(async () => response({ content: 'should not run' }))
+    })).rejects.toBeInstanceOf(LLMToolNotAllowedError);
   });
 });
 
