@@ -8,6 +8,7 @@ import type { LLMMessage, LLMToolDefinition } from './llm/types';
 import { LLMToolArgumentsError } from './llm/tooling';
 import {
   executeLLMToolLoop,
+  LLMToolContinuationError,
   LLMToolExecutionError,
   LLMToolLoopLimitError,
   LLMToolNotAllowedError
@@ -80,6 +81,7 @@ function isToolFailure(error: unknown): boolean {
   return error instanceof LLMToolNotAllowedError ||
     error instanceof LLMToolArgumentsError ||
     error instanceof LLMToolExecutionError ||
+    error instanceof LLMToolContinuationError ||
     error instanceof LLMToolLoopLimitError;
 }
 
