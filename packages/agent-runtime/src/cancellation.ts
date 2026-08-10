@@ -22,9 +22,18 @@ export function throwIfAborted(signal?: AbortSignal): void {
 }
 
 export function isAgentExecutionCancelledError(error: unknown): error is AgentExecutionCancelledError {
-  if (error instanceof AgentExecutionCancelledError) return true;
-  if (!error || typeof error !== 'object') return false;
-  return (error as { code?: unknown }).code === 'AGENT_EXECUTION_CANCELLED';
+  const visited = new Set<unknown>();
+  let candidate: unknown = error;
+
+  while (candidate && typeof candidate === 'object' && !visited.has(candidate)) {
+    visited.add(candidate);
+    if (candidate instanceof AgentExecutionCancelledError) return true;
+    const record = candidate as { code?: unknown; cause?: unknown };
+    if (record.code === 'AGENT_EXECUTION_CANCELLED') return true;
+    candidate = record.cause;
+  }
+
+  return false;
 }
 
 const activeRuns = new Map<string, AbortController>();
