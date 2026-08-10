@@ -6,4 +6,5 @@ export { callOpenAI, runMultiAgentWorkflow } from './agentRouter';
 export type { AgentWorkflowResult } from './agentRouter';
 export * from './queue';
 export * from './evaluationQueue';
+export * from './evaluationWorker';
 export * from './worker';
