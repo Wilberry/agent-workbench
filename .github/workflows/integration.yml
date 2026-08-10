@@ -3,7 +3,7 @@ name: Integration Test Suite
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, agent/queued-evaluations]
 
 jobs:
   integration:
