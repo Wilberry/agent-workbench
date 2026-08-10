@@ -11,7 +11,7 @@ export type ExecutionTrace = {
   prompt_tokens?: number;
   completion_tokens?: number;
   total_tokens?: number;
-  estimated_cost?: number | null;
+  estimated_cost?: number;
   latency_ms?: number;
   steps?: Array<{ name: string; latency?: number; input?: unknown; output?: unknown }>;
 };
@@ -89,13 +89,6 @@ function roleDescription(role: string) {
   }
 }
 
-function addEstimatedCost(total: number | null, next: number | null): number | null {
-  if (total === null || next === null) {
-    return null;
-  }
-  return total + next;
-}
-
 export async function runMultiAgentWorkflow(
   { userId, conversationId, message, workflow, memories = [], systemPrompt, runId }: AgentWorkflowInput,
   modelOverride?: string
@@ -107,7 +100,7 @@ export async function runMultiAgentWorkflow(
   let totalPromptTokens = 0;
   let totalCompletionTokens = 0;
   let totalTokens = 0;
-  let totalEstimatedCost: number | null = 0;
+  let totalEstimatedCost = 0;
   let totalLatencyMs = 0;
   let lastModelName: string | undefined;
   const episode: string[] = [];
@@ -132,7 +125,7 @@ export async function runMultiAgentWorkflow(
     totalPromptTokens += agentResponse.prompt_tokens;
     totalCompletionTokens += agentResponse.completion_tokens;
     totalTokens += agentResponse.total_tokens;
-    totalEstimatedCost = addEstimatedCost(totalEstimatedCost, agentResponse.estimated_cost);
+    totalEstimatedCost += agentResponse.estimated_cost;
     totalLatencyMs += agentResponse.latency_ms;
     lastModelName = agentResponse.model_name;
 
@@ -162,7 +155,7 @@ export async function runMultiAgentWorkflow(
       totalPromptTokens += toolResponse.prompt_tokens;
       totalCompletionTokens += toolResponse.completion_tokens;
       totalTokens += toolResponse.total_tokens;
-      totalEstimatedCost = addEstimatedCost(totalEstimatedCost, toolResponse.estimated_cost);
+      totalEstimatedCost += toolResponse.estimated_cost;
       totalLatencyMs += toolResponse.latency_ms;
       lastModelName = toolResponse.model_name;
     }
