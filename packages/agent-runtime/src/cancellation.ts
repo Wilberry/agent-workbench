@@ -1,3 +1,8 @@
+import {
+  abortActiveAgentRun,
+  registerActiveAgentRun
+} from '@agent-workbench/sdk';
+
 export class AgentExecutionCancelledError extends Error {
   code = 'AGENT_EXECUTION_CANCELLED';
 
@@ -37,23 +42,5 @@ export function isAgentExecutionCancelledError(error: unknown): error is AgentEx
   return false;
 }
 
-const activeRuns = new Map<string, AbortController>();
-
-export function registerActiveRun(runId: string, controller: AbortController): () => void {
-  const previous = activeRuns.get(runId);
-  if (previous && previous !== controller) {
-    previous.abort('Execution ownership moved to another runner');
-  }
-  activeRuns.set(runId, controller);
-
-  return () => {
-    if (activeRuns.get(runId) === controller) activeRuns.delete(runId);
-  };
-}
-
-export function abortActiveRun(runId: string, reason = 'Agent run cancelled'): boolean {
-  const controller = activeRuns.get(runId);
-  if (!controller) return false;
-  if (!controller.signal.aborted) controller.abort(reason);
-  return true;
-}
+export const registerActiveRun = registerActiveAgentRun;
+export const abortActiveRun = abortActiveAgentRun;
