@@ -4,6 +4,7 @@ import type {
   LLMResponse,
   LLMStreamEvent
 } from './types';
+import { LLMStreamProtocolError } from './stream';
 import {
   getLLMProviderRegistration,
   normalizeProviderName
@@ -81,6 +82,7 @@ export async function* streamChatCompletion(
   const normalized = normalizedRequest(request);
 
   if (provider.streamChatCompletion) {
+    let completed = false;
     for await (const event of provider.streamChatCompletion(normalized)) {
       if (event.type === 'response_start') {
         yield {
@@ -91,6 +93,7 @@ export async function* streamChatCompletion(
       }
 
       if (event.type === 'response_end') {
+        completed = true;
         yield {
           ...event,
           response: {
@@ -102,6 +105,13 @@ export async function* streamChatCompletion(
       }
 
       yield event;
+    }
+
+    if (!completed) {
+      throw new LLMStreamProtocolError(
+        providerName,
+        'provider stream ended without response_end'
+      );
     }
     return;
   }
