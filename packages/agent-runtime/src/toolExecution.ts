@@ -6,7 +6,7 @@ import type {
   LLMToolCall,
   LLMToolDefinition
 } from './llm/types';
-import { runTool } from './tools';
+import { runTool, type ToolExecutionContext } from './tools';
 
 export class LLMToolNotAllowedError extends Error {
   code = 'LLM_TOOL_NOT_ALLOWED';
@@ -55,7 +55,7 @@ type ExecuteTool = (
   args: Record<string, unknown>,
   runId?: string,
   organizationId?: string | null,
-  ownerUserId?: string | null
+  context?: ToolExecutionContext
 ) => Promise<unknown>;
 
 type ExecuteLLMToolLoopInput = {
@@ -66,6 +66,8 @@ type ExecuteLLMToolLoopInput = {
   runId?: string;
   organizationId?: string | null;
   ownerUserId?: string | null;
+  agentId?: string | null;
+  conversationId?: string | null;
   temperature?: number;
   max_tokens?: number;
   maxToolRounds?: number;
@@ -119,6 +121,8 @@ export async function executeLLMToolLoop({
   runId,
   organizationId,
   ownerUserId,
+  agentId,
+  conversationId,
   temperature = 0.7,
   max_tokens = 1200,
   maxToolRounds = 2,
@@ -134,6 +138,11 @@ export async function executeLLMToolLoop({
   const currentMessages: LLMMessage[] = [...messages];
   const toolsCalled: string[] = [];
   const toolExecutions: ToolExecutionRecord[] = [];
+  const executionContext: ToolExecutionContext = {
+    ownerUserId,
+    agentId,
+    conversationId
+  };
 
   let modelIterations = 0;
   let toolRounds = 0;
@@ -187,7 +196,7 @@ export async function executeLLMToolLoop({
           call.arguments,
           runId,
           organizationId,
-          ownerUserId
+          executionContext
         );
         const record: ToolExecutionRecord = {
           call,
@@ -238,7 +247,7 @@ export async function executeLLMToolLoop({
         legacyCall.args,
         runId,
         organizationId,
-        ownerUserId
+        executionContext
       );
       const record: ToolExecutionRecord = {
         call: syntheticCall,
