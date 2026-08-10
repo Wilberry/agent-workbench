@@ -26,6 +26,7 @@ type MemorySnippet = {
 
 type AgentWorkflowInput = {
   userId: string;
+  agentId?: string | null;
   conversationId: string;
   message: string;
   workflow?: string[];
@@ -91,7 +92,8 @@ function roleDescription(role: string) {
 export async function runMultiAgentWorkflow(
   {
     userId: _userId,
-    conversationId: _conversationId,
+    agentId,
+    conversationId,
     message,
     workflow,
     memories = [],
@@ -140,6 +142,8 @@ export async function runMultiAgentWorkflow(
       runId,
       organizationId,
       ownerUserId,
+      agentId,
+      conversationId,
       maxToolRounds: 2,
       onToolExecuted(record) {
         steps.push({
