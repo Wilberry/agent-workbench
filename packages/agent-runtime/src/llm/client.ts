@@ -7,14 +7,45 @@ const providers: Record<string, LLMProvider> = {
   mock: mockProvider
 };
 
+export class LLMConfigurationError extends Error {
+  code = 'LLM_CONFIGURATION_ERROR';
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'LLMConfigurationError';
+  }
+}
+
+export class UnsupportedLLMProviderError extends Error {
+  code = 'UNSUPPORTED_LLM_PROVIDER';
+
+  constructor(public readonly provider: string) {
+    super(`Unsupported LLM provider: ${provider}`);
+    this.name = 'UnsupportedLLMProviderError';
+  }
+}
+
 function getProvider(provider?: string): LLMProvider {
-  const useMockOpenAI = process.env.USE_MOCK_OPENAI === 'true' || !process.env.OPENAI_API_KEY;
-  if (useMockOpenAI) {
-    return mockProvider;
+  const name = provider?.trim().toLowerCase() || 'openai';
+  const selectedProvider = providers[name];
+
+  if (!selectedProvider) {
+    throw new UnsupportedLLMProviderError(name);
   }
 
-  const name = provider?.toLowerCase() ?? 'openai';
-  return providers[name] ?? openaiProvider;
+  if (name === 'openai') {
+    if (process.env.USE_MOCK_OPENAI === 'true') {
+      return mockProvider;
+    }
+
+    if (!process.env.OPENAI_API_KEY) {
+      throw new LLMConfigurationError(
+        'OPENAI_API_KEY is required for the OpenAI provider unless USE_MOCK_OPENAI=true is explicitly set.'
+      );
+    }
+  }
+
+  return selectedProvider;
 }
 
 export async function chatCompletion(request: LLMRequest): Promise<LLMResponse> {
