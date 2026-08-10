@@ -10,9 +10,12 @@ async function handlePost(request: NextRequest, authClient = createRouteHandlerS
     const authUser = user?.user ?? null;
     if (!authUser) return new Response(JSON.stringify({ error: 'Not authenticated' }), { status: 401 });
 
-    const supabase = createServerSupabaseClient();
+    if (!body.datasetId || !body.agentVersionId) {
+      return new Response(JSON.stringify({ error: 'datasetId and agentVersionId are required' }), { status: 400 });
+    }
 
-    const res = await evaluations.createEvaluationRun(
+    const supabase = createServerSupabaseClient();
+    const { run } = await evaluations.createEvaluationRun(
       authUser.id,
       {
         datasetId: body.datasetId,
@@ -22,10 +25,18 @@ async function handlePost(request: NextRequest, authClient = createRouteHandlerS
       supabase
     );
 
-    return new Response(JSON.stringify({ run: res.run, results: res.results, summary: res.summary }), {
-      status: 201,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return new Response(
+      JSON.stringify({
+        run,
+        runId: run.id,
+        status: run.status,
+        message: 'Evaluation run queued for background execution'
+      }),
+      {
+        status: 202,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
   } catch (err) {
     return new Response(JSON.stringify({ error: (err as Error).message }), { status: 500 });
   }
