@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { headers, cookies } from 'next/headers';
 import { createRouteHandlerSupabaseClient } from '@supabase/auth-helpers-nextjs';
+import { abortActiveRun } from '@agent-workbench/agent-runtime';
 import { agentRuns, createServerSupabaseClient } from '@agent-workbench/sdk';
 
 function errorStatus(message: string) {
@@ -26,12 +27,19 @@ async function handlePost(
     }
 
     const supabase = createServerSupabaseClient();
+    const reason = typeof body.reason === 'string' && body.reason.trim()
+      ? body.reason.trim()
+      : 'Agent run cancelled';
     const run = await agentRuns.cancelRun(
       authUser.id,
       body.runId,
-      body.reason ?? null,
+      reason,
       supabase
     );
+
+    // Best effort for deployments where the route and executor share a process.
+    // The database state remains authoritative for cross-process cancellation.
+    abortActiveRun(body.runId, reason);
 
     return new Response(JSON.stringify({ run }), {
       status: 200,
