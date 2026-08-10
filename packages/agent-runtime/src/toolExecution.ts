@@ -8,6 +8,7 @@ import type {
   LLMToolCall,
   LLMToolDefinition
 } from './llm/types';
+import { throwIfAborted } from './cancellation';
 import { runTool, type ToolExecutionContext } from './tools';
 
 export class LLMToolNotAllowedError extends Error {
@@ -44,18 +45,55 @@ export class LLMToolExecutionError extends Error {
   }
 }
 
+export type LLMToolLoopCheckpoint = {
+  version: 1;
+  provider: string;
+  model: string;
+  messages: LLMMessage[];
+  toolRounds: number;
+  toolsCalled: string[];
+  completedToolCalls: number;
+  modelIterations: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  estimated_cost: number;
+  latency_ms: number;
+  provider_name?: string;
+  model_name?: string;
+  stop_reason?: LLMResponse['stop_reason'];
+  legacyFallbackUsed: boolean;
+};
+
 export class LLMToolContinuationError extends Error {
   code = 'LLM_TOOL_CONTINUATION_FAILED';
 
   constructor(
     public readonly completedToolCalls: number,
-    cause: unknown
+    cause: unknown,
+    public readonly resumeSafe = false,
+    public readonly checkpoint?: LLMToolLoopCheckpoint
   ) {
     super(
       `Provider continuation failed after ${completedToolCalls} completed tool call(s): ${cause instanceof Error ? cause.message : String(cause)}`,
       { cause }
     );
     this.name = 'LLMToolContinuationError';
+  }
+}
+
+export class LLMToolCheckpointError extends Error {
+  code = 'LLM_TOOL_CHECKPOINT_FAILED';
+
+  constructor(
+    public readonly completedToolCalls: number,
+    cause: unknown
+  ) {
+    super(
+      `Tool continuation checkpoint failed after ${completedToolCalls} completed tool call(s): ${cause instanceof Error ? cause.message : String(cause)}`,
+      { cause }
+    );
+    this.name = 'LLMToolCheckpointError';
   }
 }
 
@@ -112,6 +150,9 @@ type ExecuteLLMToolLoopInput = {
   temperature?: number;
   max_tokens?: number;
   maxToolRounds?: number;
+  signal?: AbortSignal;
+  resumeFrom?: LLMToolLoopCheckpoint | null;
+  assertActive?: () => void | Promise<void>;
   onModelResponse?: (
     response: LLMResponse,
     aggregate: LLMToolLoopAggregate
@@ -121,6 +162,7 @@ type ExecuteLLMToolLoopInput = {
     context: LLMToolLoopStreamContext
   ) => void | Promise<void>;
   onToolExecuted?: (record: ToolExecutionRecord) => void | Promise<void>;
+  onCheckpoint?: (checkpoint: LLMToolLoopCheckpoint) => void | Promise<void>;
   complete?: Complete;
   stream?: Stream;
   executeTool?: ExecuteTool;
@@ -163,6 +205,34 @@ function assertAllowedTool(toolName: string, allowedNames: Set<string>) {
   }
 }
 
+function normalizedName(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function validateCheckpoint(
+  checkpoint: LLMToolLoopCheckpoint | null | undefined,
+  provider: string,
+  model: string
+): void {
+  if (!checkpoint) return;
+  if (checkpoint.version !== 1) {
+    throw new Error(`Unsupported tool-loop checkpoint version: ${checkpoint.version}`);
+  }
+  if (normalizedName(checkpoint.provider) !== normalizedName(provider) || checkpoint.model !== model) {
+    throw new Error('Tool-loop checkpoint provider/model does not match the requested execution');
+  }
+}
+
+function copyMessages(messages: LLMMessage[]): LLMMessage[] {
+  return messages.map((message) => ({
+    ...message,
+    tool_calls: message.tool_calls?.map((call) => ({
+      ...call,
+      arguments: { ...call.arguments }
+    }))
+  }));
+}
+
 export async function executeLLMToolLoop({
   provider,
   model,
@@ -176,9 +246,13 @@ export async function executeLLMToolLoop({
   temperature = 0.7,
   max_tokens = 1200,
   maxToolRounds = 2,
+  signal,
+  resumeFrom,
+  assertActive,
   onModelResponse,
   onStreamEvent,
   onToolExecuted,
+  onCheckpoint,
   complete = chatCompletion,
   stream,
   executeTool = runTool
@@ -186,10 +260,11 @@ export async function executeLLMToolLoop({
   if (!Number.isInteger(maxToolRounds) || maxToolRounds < 0) {
     throw new Error('maxToolRounds must be a non-negative integer');
   }
+  validateCheckpoint(resumeFrom, provider, model);
 
   const allowedNames = new Set(tools.map((tool) => tool.name));
-  const currentMessages: LLMMessage[] = [...messages];
-  const toolsCalled: string[] = [];
+  const currentMessages: LLMMessage[] = copyMessages(resumeFrom?.messages ?? messages);
+  const toolsCalled: string[] = [...(resumeFrom?.toolsCalled ?? [])];
   const toolExecutions: ToolExecutionRecord[] = [];
   const executionContext: ToolExecutionContext = {
     ownerUserId,
@@ -197,19 +272,61 @@ export async function executeLLMToolLoop({
     conversationId
   };
 
-  let modelIterations = 0;
-  let toolRounds = 0;
-  let promptTokens = 0;
-  let completionTokens = 0;
-  let totalTokens = 0;
-  let estimatedCost = 0;
-  let latencyMs = 0;
-  let lastProviderName: string | undefined;
-  let lastModelName: string | undefined;
-  let lastStopReason: LLMResponse['stop_reason'];
-  let legacyFallbackUsed = false;
+  let modelIterations = resumeFrom?.modelIterations ?? 0;
+  let toolRounds = resumeFrom?.toolRounds ?? 0;
+  let completedToolCalls = resumeFrom?.completedToolCalls ?? 0;
+  let promptTokens = resumeFrom?.prompt_tokens ?? 0;
+  let completionTokens = resumeFrom?.completion_tokens ?? 0;
+  let totalTokens = resumeFrom?.total_tokens ?? 0;
+  let estimatedCost = resumeFrom?.estimated_cost ?? 0;
+  let latencyMs = resumeFrom?.latency_ms ?? 0;
+  let lastProviderName: string | undefined = resumeFrom?.provider_name;
+  let lastModelName: string | undefined = resumeFrom?.model_name;
+  let lastStopReason: LLMResponse['stop_reason'] = resumeFrom?.stop_reason;
+  let legacyFallbackUsed = resumeFrom?.legacyFallbackUsed ?? false;
+  let lastCheckpoint: LLMToolLoopCheckpoint | undefined = resumeFrom ?? undefined;
+  let checkpointPersisted = Boolean(resumeFrom);
+
+  const ensureActive = async () => {
+    throwIfAborted(signal);
+    await assertActive?.();
+    throwIfAborted(signal);
+  };
+
+  const buildCheckpoint = (): LLMToolLoopCheckpoint => ({
+    version: 1,
+    provider: normalizedName(provider),
+    model,
+    messages: copyMessages(currentMessages),
+    toolRounds,
+    toolsCalled: [...toolsCalled],
+    completedToolCalls,
+    modelIterations,
+    prompt_tokens: promptTokens,
+    completion_tokens: completionTokens,
+    total_tokens: totalTokens,
+    estimated_cost: estimatedCost,
+    latency_ms: latencyMs,
+    provider_name: lastProviderName,
+    model_name: lastModelName,
+    stop_reason: lastStopReason,
+    legacyFallbackUsed
+  });
+
+  const persistCheckpoint = async () => {
+    lastCheckpoint = buildCheckpoint();
+    checkpointPersisted = false;
+    if (!onCheckpoint) return;
+    try {
+      await onCheckpoint(lastCheckpoint);
+      checkpointPersisted = true;
+    } catch (error) {
+      throw new LLMToolCheckpointError(completedToolCalls, error);
+    }
+  };
 
   while (true) {
+    await ensureActive();
     const request: LLMRequest = {
       provider,
       model,
@@ -217,7 +334,8 @@ export async function executeLLMToolLoop({
       temperature,
       max_tokens,
       tools: tools.length > 0 ? tools : undefined,
-      tool_choice: tools.length > 0 ? 'auto' : undefined
+      tool_choice: tools.length > 0 ? 'auto' : undefined,
+      signal
     };
 
     let response: LLMResponse;
@@ -235,8 +353,13 @@ export async function executeLLMToolLoop({
         response = await complete(request);
       }
     } catch (error) {
-      if (toolExecutions.length > 0) {
-        throw new LLMToolContinuationError(toolExecutions.length, error);
+      if (completedToolCalls > 0) {
+        throw new LLMToolContinuationError(
+          completedToolCalls,
+          error,
+          checkpointPersisted,
+          lastCheckpoint
+        );
       }
       throw error;
     }
@@ -270,13 +393,13 @@ export async function executeLLMToolLoop({
         throw new LLMToolLoopLimitError(maxToolRounds);
       }
 
-      // Validate the whole provider response before causing any tool side effects.
       for (const call of nativeCalls) {
         assertAllowedTool(call.name, allowedNames);
       }
 
       const roundResults: ToolExecutionRecord[] = [];
       for (const call of nativeCalls) {
+        await ensureActive();
         const startedAt = Date.now();
         let result: unknown;
         try {
@@ -288,7 +411,7 @@ export async function executeLLMToolLoop({
             executionContext
           );
         } catch (error) {
-          throw new LLMToolExecutionError(call.name, toolExecutions.length, error);
+          throw new LLMToolExecutionError(call.name, completedToolCalls, error);
         }
         const record: ToolExecutionRecord = {
           call,
@@ -296,6 +419,7 @@ export async function executeLLMToolLoop({
           latency_ms: Date.now() - startedAt,
           mode: 'native'
         };
+        completedToolCalls += 1;
         toolsCalled.push(call.name);
         toolExecutions.push(record);
         roundResults.push(record);
@@ -317,6 +441,8 @@ export async function executeLLMToolLoop({
       }
 
       toolRounds += 1;
+      await ensureActive();
+      await persistCheckpoint();
       continue;
     }
 
@@ -327,6 +453,7 @@ export async function executeLLMToolLoop({
       }
 
       assertAllowedTool(legacyCall.name, allowedNames);
+      await ensureActive();
       legacyFallbackUsed = true;
       const syntheticCall: LLMToolCall = {
         id: `legacy-${modelIterations}-${toolRounds + 1}`,
@@ -344,7 +471,7 @@ export async function executeLLMToolLoop({
           executionContext
         );
       } catch (error) {
-        throw new LLMToolExecutionError(legacyCall.name, toolExecutions.length, error);
+        throw new LLMToolExecutionError(legacyCall.name, completedToolCalls, error);
       }
       const record: ToolExecutionRecord = {
         call: syntheticCall,
@@ -352,6 +479,7 @@ export async function executeLLMToolLoop({
         latency_ms: Date.now() - startedAt,
         mode: 'legacy'
       };
+      completedToolCalls += 1;
       toolsCalled.push(legacyCall.name);
       toolExecutions.push(record);
       await onToolExecuted?.(record);
@@ -367,6 +495,8 @@ export async function executeLLMToolLoop({
       });
 
       toolRounds += 1;
+      await ensureActive();
+      await persistCheckpoint();
       continue;
     }
 
