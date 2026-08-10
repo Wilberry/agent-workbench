@@ -11,7 +11,7 @@ export type ExecutionTrace = {
   prompt_tokens?: number;
   completion_tokens?: number;
   total_tokens?: number;
-  estimated_cost?: number;
+  estimated_cost?: number | null;
   latency_ms?: number;
   steps?: Array<{ name: string; latency?: number; input?: unknown; output?: unknown }>;
 };
@@ -89,6 +89,13 @@ function roleDescription(role: string) {
   }
 }
 
+function addEstimatedCost(total: number | null, next: number | null): number | null {
+  if (total === null || next === null) {
+    return null;
+  }
+  return total + next;
+}
+
 export async function runMultiAgentWorkflow(
   { userId, conversationId, message, workflow, memories = [], systemPrompt, runId }: AgentWorkflowInput,
   modelOverride?: string
@@ -100,7 +107,7 @@ export async function runMultiAgentWorkflow(
   let totalPromptTokens = 0;
   let totalCompletionTokens = 0;
   let totalTokens = 0;
-  let totalEstimatedCost = 0;
+  let totalEstimatedCost: number | null = 0;
   let totalLatencyMs = 0;
   let lastModelName: string | undefined;
   const episode: string[] = [];
@@ -115,15 +122,7 @@ export async function runMultiAgentWorkflow(
       },
       {
         role: 'user',
-        content: `User task: ${message}
-
-Memory context:
-${memoryContext}
-
-Previous agent output:
-${episode.join('\n')}
-
-Respond with your assigned role output.`
+        content: `User task: ${message}\n\nMemory context:\n${memoryContext}\n\nPrevious agent output:\n${episode.join('\n')}\n\nRespond with your assigned role output.`
       }
     ];
 
@@ -133,7 +132,7 @@ Respond with your assigned role output.`
     totalPromptTokens += agentResponse.prompt_tokens;
     totalCompletionTokens += agentResponse.completion_tokens;
     totalTokens += agentResponse.total_tokens;
-    totalEstimatedCost += agentResponse.estimated_cost;
+    totalEstimatedCost = addEstimatedCost(totalEstimatedCost, agentResponse.estimated_cost);
     totalLatencyMs += agentResponse.latency_ms;
     lastModelName = agentResponse.model_name;
 
@@ -143,15 +142,13 @@ Respond with your assigned role output.`
       const toolStart = Date.now();
       const toolResult = await runTool(toolCall.name, toolCall.args, runId);
       const toolLatency = Date.now() - toolStart;
-      // record a step for the tool invocation
       steps.push({ name: `tool:${toolCall.name}`, latency: toolLatency, input: toolCall.args, output: toolResult });
 
       const toolPrompt = [
         ...rolePrompt,
         {
           role: 'system',
-          content: `Tool ${toolCall.name} executed. Result:
-${JSON.stringify(toolResult, null, 2)}`
+          content: `Tool ${toolCall.name} executed. Result:\n${JSON.stringify(toolResult, null, 2)}`
         },
         {
           role: 'user',
@@ -165,17 +162,15 @@ ${JSON.stringify(toolResult, null, 2)}`
       totalPromptTokens += toolResponse.prompt_tokens;
       totalCompletionTokens += toolResponse.completion_tokens;
       totalTokens += toolResponse.total_tokens;
-      totalEstimatedCost += toolResponse.estimated_cost;
+      totalEstimatedCost = addEstimatedCost(totalEstimatedCost, toolResponse.estimated_cost);
       totalLatencyMs += toolResponse.latency_ms;
       lastModelName = toolResponse.model_name;
     }
 
-    // push a step representing this role's output (use reported latency if available)
     const roleLatency = (agentResponse?.latency_ms as number | undefined) ?? undefined;
     steps.push({ name: `${role}`, latency: roleLatency, input: undefined, output: finalOutput });
 
-    episode.push(`${role.toUpperCase()} OUTPUT:
-  ${finalOutput}`);
+    episode.push(`${role.toUpperCase()} OUTPUT:\n  ${finalOutput}`);
   }
 
   return {
