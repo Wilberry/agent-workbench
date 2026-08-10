@@ -34,6 +34,14 @@ describe('provider pricing registry', () => {
     );
   });
 
+  it('normalizes provider and model names before lookup', () => {
+    const pricing = getPricingProvider();
+
+    expect(pricing.getModelPricing(' GPT-4O-MINI ', ' OPENAI ')).toEqual(
+      pricing.getModelPricing('gpt-4o-mini', 'openai')
+    );
+  });
+
   it('does not match a model across provider boundaries', () => {
     const pricing = getPricingProvider();
 
