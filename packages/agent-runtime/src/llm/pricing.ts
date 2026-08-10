@@ -1,6 +1,6 @@
 import type { LLMUsage, ModelPricing, PricingProvider } from './types';
 
-export const PRICING_CATALOG_VERSION = '1';
+export const PRICING_CATALOG_VERSION = '2';
 
 const pricingCatalog: ReadonlyArray<ModelPricing> = [
   {
@@ -28,6 +28,14 @@ const pricingCatalog: ReadonlyArray<ModelPricing> = [
     promptPer1k: 0.0015,
     completionPer1k: 0.002,
     aliases: ['gpt-3.5-turbo'],
+    catalogVersion: PRICING_CATALOG_VERSION
+  },
+  {
+    provider: 'anthropic',
+    model: 'claude-sonnet-4-6',
+    currency: 'USD',
+    promptPer1k: 0.003,
+    completionPer1k: 0.015,
     catalogVersion: PRICING_CATALOG_VERSION
   }
 ];
