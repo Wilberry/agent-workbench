@@ -2,8 +2,9 @@ name: Integration Test Suite
 
 on:
   workflow_dispatch:
+  pull_request:
   push:
-    branches: [main, agent/queued-evaluations]
+    branches: [main]
 
 jobs:
   integration:
