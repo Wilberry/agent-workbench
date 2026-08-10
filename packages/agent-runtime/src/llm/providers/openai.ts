@@ -1,5 +1,6 @@
 import type { LLMRequest, LLMResponse, LLMProvider, LLMUsage } from '../types';
 import { getPricingProvider } from '../pricing';
+import { requestWithProviderReliability } from '../http';
 
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 
@@ -24,27 +25,29 @@ export const openaiProvider: LLMProvider = {
     }
 
     const start = Date.now();
-    const res = await fetch(OPENAI_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`
+    const res = await requestWithProviderReliability(
+      'openai',
+      OPENAI_URL,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: request.model,
+          messages: request.messages,
+          temperature: request.temperature ?? 0.7,
+          max_tokens: request.max_tokens ?? 1200
+        })
       },
-      body: JSON.stringify({
-        model: request.model,
-        messages: request.messages,
-        temperature: request.temperature ?? 0.7,
-        max_tokens: request.max_tokens ?? 1200
-      })
-    });
+      {
+        timeoutMs: request.timeout_ms,
+        maxRetries: request.max_retries
+      }
+    );
 
     const latency_ms = Date.now() - start;
-
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`OpenAI request failed: ${res.status} ${text}`);
-    }
-
     const payload = await res.json();
     const usage = normalizeUsage(payload);
     const content = extractContent(payload);
