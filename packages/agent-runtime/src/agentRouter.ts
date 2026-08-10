@@ -33,6 +33,7 @@ type AgentWorkflowInput = {
   systemPrompt?: string;
   runId?: string;
   organizationId?: string | null;
+  ownerUserId?: string | null;
   tools?: LLMToolDefinition[];
 };
 
@@ -97,6 +98,7 @@ export async function runMultiAgentWorkflow(
     systemPrompt,
     runId,
     organizationId,
+    ownerUserId,
     tools
   }: AgentWorkflowInput,
   modelOverride?: string,
@@ -137,6 +139,7 @@ export async function runMultiAgentWorkflow(
       tools: availableTools,
       runId,
       organizationId,
+      ownerUserId,
       maxToolRounds: 2,
       onToolExecuted(record) {
         steps.push({
