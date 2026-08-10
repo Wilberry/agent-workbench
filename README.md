@@ -21,6 +21,7 @@ Agent Workbench is a production-oriented pre-release platform. The backend archi
 - Retry, stale-job recovery, and dead-letter behavior
 - Run traces, replay foundations, token usage, latency, and cost telemetry
 - Evaluation datasets, examples, evaluation runs, and persisted results
+- Durable queued evaluation and experiment execution with progress, retry, recovery, and cooperative cancellation
 - Version-to-version experiments
 - Organization-scoped multi-tenancy and RBAC
 - Marketplace publish, install, and fork workflows
@@ -33,12 +34,11 @@ Agent Workbench is a production-oriented pre-release platform. The backend archi
 - OpenAI is the only live LLM provider currently registered; a mock provider is available for explicit test use
 - Cost estimates are based on a local pricing catalog; unknown models now raise an explicit pricing error instead of being reported as free
 - Multi-agent workflow failures may fall back to the single-agent runtime, with fallback state recorded in execution traces
-- Evaluation and experiment execution is currently synchronous and is the next major architecture target
+- Evaluation cancellation is cooperative between examples; an already-started provider request may finish before the worker observes cancellation
 - The current tool loop uses a structured text protocol rather than provider-native tool/function calling
 
 ### Planned
 
-- Queued evaluation and experiment execution with progress, retry, cancellation, and recovery
 - Additional model providers such as Anthropic, Gemini, and OpenRouter
 - Provider health, retry, and pricing-registry improvements
 - Provider-native structured tool calling and richer streaming
@@ -88,13 +88,15 @@ Provider behavior is intentionally strict: missing OpenAI credentials fail with 
 The evaluation system currently supports:
 
 - dataset creation and example management
-- evaluation runs against agent versions
+- durable queued evaluation runs against agent versions
+- queued A/B-style experiments between two agent versions
 - exact-match scoring
-- result persistence
+- per-example progress and persisted result checkpoints
+- retry, stale-job recovery, and durable completion semantics
+- cooperative cancellation for queued/running evaluations and experiments
 - latency, token, trace, and cost aggregation
-- A/B-style experiments between two agent versions
 
-Evaluation examples and experiment arms are currently executed synchronously. Moving this work onto durable queues is the next major engineering milestone.
+With v0.6 complete, the next engineering milestone is v0.7 Model Platform: additional live providers, provider-specific reliability behavior, health reporting, and a versioned pricing registry.
 
 ## Testing and validation
 
@@ -165,12 +167,12 @@ The original phase-based roadmap has been retired because the repository has out
 
 ### v0.6 — Async Evaluations
 
-- [ ] Queue evaluation runs
-- [ ] Queue experiment execution
-- [ ] Per-example progress
-- [ ] Retry and recovery
-- [ ] Cancellation
-- [ ] Durable aggregation and completion semantics
+- [x] Queue evaluation runs
+- [x] Queue experiment execution
+- [x] Per-example progress
+- [x] Retry and recovery
+- [x] Cancellation
+- [x] Durable aggregation and completion semantics
 
 ### v0.7 — Model Platform
 
