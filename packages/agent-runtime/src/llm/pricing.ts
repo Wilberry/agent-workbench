@@ -25,7 +25,7 @@ export const pricingProvider: PricingProvider = {
   estimateCost(model: string, usage: LLMUsage) {
     const pricing = findPricing(model);
     if (!pricing) {
-      return 0;
+      return null;
     }
     return (
       (pricing.promptPer1k * usage.prompt_tokens) / 1000 +
