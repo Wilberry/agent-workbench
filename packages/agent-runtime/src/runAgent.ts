@@ -437,26 +437,45 @@ function streamError(error: unknown): AgentRunStreamEvent {
 
 export function runAgentEventStream(input: Omit<RunAgentInput, 'debug' | 'onStreamEvent'>): Response {
   const encoder = new TextEncoder();
+  let cancelled = false;
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
+      const emit = (event: AgentRunStreamEvent) => {
+        if (cancelled) return;
+        try {
+          controller.enqueue(encoder.encode(serializeSSE(event)));
+        } catch {
+          cancelled = true;
+        }
+      };
+
       void (async () => {
         try {
           const response = await runAgent({
             ...input,
             debug: false,
             onStreamEvent(event) {
-              controller.enqueue(encoder.encode(serializeSSE(event)));
+              emit(event);
             }
           });
           const content = await response.text();
-          controller.enqueue(encoder.encode(serializeSSE({ type: 'run_end', content })));
+          emit({ type: 'run_end', content });
         } catch (error) {
-          controller.enqueue(encoder.encode(serializeSSE(streamError(error))));
+          emit(streamError(error));
         } finally {
-          controller.close();
+          if (!cancelled) {
+            try {
+              controller.close();
+            } catch {
+              cancelled = true;
+            }
+          }
         }
       })();
+    },
+    cancel() {
+      cancelled = true;
     }
   });
 
