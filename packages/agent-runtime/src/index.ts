@@ -11,4 +11,6 @@ export * from './worker';
 export * from './llm/client';
 export * from './llm/registry';
 export * from './llm/pricing';
+export * from './llm/http';
+export * from './llm/health';
 export type { LLMMessage, LLMRequest, LLMResponse, LLMProvider } from './llm/types';
