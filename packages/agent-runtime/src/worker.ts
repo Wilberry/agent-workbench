@@ -91,7 +91,6 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
   try {
     setProcessing(runId, true);
 
-    // Fetch current run to get existing trace (for recovery)
     const { data: existingRun, error: fetchError } = await supabase
       .from('agent_runs')
       .select('execution_trace, current_step, status, organization_id, agent_version_id')
@@ -102,8 +101,6 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
       throw new Error(`Failed to fetch run state: ${fetchError.message}`);
     }
 
-    const existingTrace = (existingRun?.execution_trace as Array<Record<string, unknown>>) || [];
-    void existingTrace;
     let currentStep = existingRun?.current_step || 0;
     const pinnedAgentVersionId = existingRun?.agent_version_id ?? null;
 
@@ -161,13 +158,10 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
       model: agentModel
     });
 
-    // Update status to running
     await supabase.from('agent_runs').update({ status: 'running' }).eq('id', runId);
 
     const memoryContext = formatMemoryContext(memories);
     const episode: string[] = [];
-    let allToolsCalled: string[] = [];
-    let totalIterations = 0;
     let lastAgentOutput = '';
     let totalInputTokens = 0;
     let totalOutputTokens = 0;
@@ -177,11 +171,9 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
     let lastProviderName: string | undefined;
     let lastModelName: string | undefined;
 
-    // Resume from current_step in case of restart
     for (let stepIndex = currentStep; stepIndex < effectiveWorkflow.length; stepIndex += 1) {
       const role = effectiveWorkflow[stepIndex]!;
       const toolsCalled: string[] = [];
-      let modelIterations = 0;
       let stepFailed = false;
       let stepError: string | null = null;
       let stepCause: unknown = null;
@@ -210,8 +202,6 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
             max_tokens: 1200
           });
           const agentOutput = agentResult.content;
-          modelIterations += 1;
-          totalIterations += 1;
           let finalOutput = agentOutput;
           totalInputTokens += agentResult.prompt_tokens;
           totalOutputTokens += agentResult.completion_tokens;
@@ -236,7 +226,6 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
           const toolCall = parseToolCall(agentOutput);
           if (toolCall) {
             toolsCalled.push(toolCall.name);
-            allToolsCalled.push(toolCall.name);
             const toolCallStart = Date.now();
 
             const toolResult = await runTool(toolCall.name, toolCall.args, runId, organizationId);
@@ -269,8 +258,6 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
               max_tokens: 1200
             });
             finalOutput = toolResultOutput.content;
-            modelIterations += 1;
-            totalIterations += 1;
             totalInputTokens += toolResultOutput.prompt_tokens;
             totalOutputTokens += toolResultOutput.completion_tokens;
             totalTokens += toolResultOutput.total_tokens;
@@ -294,7 +281,6 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
           episode.push(`${role.toUpperCase()} OUTPUT:\n${finalOutput}`);
           lastAgentOutput = finalOutput;
 
-          // Build rich execution step and persist it (this will also broadcast via Supabase)
           const execStep: ExecutionStep = {
             id: randomUUID(),
             run_id: runId,
@@ -324,7 +310,6 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
             toolName: toolsCalled[0] ?? null
           });
 
-          // Step succeeded, break retry loop
           stepFailed = false;
           break;
         } catch (error) {
@@ -362,8 +347,6 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
           toolName: toolsCalled[0] ?? null
         });
 
-        // Persist error step and broadcast. Terminal/requeue state is decided
-        // once at the durable job boundary in the outer catch below.
         const errorExecStep: ExecutionStep = {
           id: randomUUID(),
           run_id: runId,
@@ -381,14 +364,16 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
         };
 
         await persistExecutionStep(runId, errorExecStep);
-        setProcessing(runId, false);
+        // persistExecutionStep keeps the failed attempt in the trace, but its
+        // legacy cursor update must not make durable recovery skip this role.
+        await supabase.from('agent_runs').update({ current_step: stepIndex }).eq('id', runId);
+
         if (stepCause instanceof Error) throw stepCause;
         throw new Error(`Workflow failed at step ${stepIndex}: ${stepError}`);
       }
       currentStep = stepIndex + 1;
     }
 
-    // Persist the final assistant response to conversation history
     if (lastAgentOutput) {
       const { data: assistantRow, error: assistantError } = await supabase
         .from('messages')
@@ -408,7 +393,6 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
       }
     }
 
-    // Mark complete
     void persistEvent('run_completed', {
       total_steps: effectiveWorkflow.length,
       total_tokens: totalTokens,
@@ -419,7 +403,6 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
     });
     await markRunCompleted(runId);
     await markQueueJobCompleted(runId);
-    setProcessing(runId, false);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     void persistEvent('run_failed', {
@@ -466,7 +449,6 @@ export async function startBackgroundWorker(): Promise<void> {
       try {
         const job = await dequeueAgentRun();
         if (!job) {
-          // no jobs - attempt to reclaim any stale jobs periodically
           await reclaimStaleJobs().catch(() => {});
           await sleep(1000);
           continue;
