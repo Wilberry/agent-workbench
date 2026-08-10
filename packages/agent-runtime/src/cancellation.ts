@@ -28,8 +28,9 @@ export function isAgentExecutionCancelledError(error: unknown): error is AgentEx
   while (candidate && typeof candidate === 'object' && !visited.has(candidate)) {
     visited.add(candidate);
     if (candidate instanceof AgentExecutionCancelledError) return true;
-    const record = candidate as { code?: unknown; cause?: unknown };
+    const record = candidate as { code?: unknown; cause?: unknown; message?: unknown };
     if (record.code === 'AGENT_EXECUTION_CANCELLED') return true;
+    if (record.message === 'agent_run_cancelled') return true;
     candidate = record.cause;
   }
 
