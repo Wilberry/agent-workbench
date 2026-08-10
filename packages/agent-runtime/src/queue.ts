@@ -334,6 +334,12 @@ function traceEntries(trace: unknown): ExecutionStep[] {
   return Array.isArray(trace) ? trace as ExecutionStep[] : [];
 }
 
+function isCompletedWorkflowStep(entry: ExecutionStep, stepIndex: number): boolean {
+  return entry.status === 'completed' &&
+    entry.step !== 'checkpoint' &&
+    entry.metadata?.stepIndex === stepIndex;
+}
+
 export function getRunCheckpoint(trace: unknown, stepIndex: number, role?: string): LLMToolLoopCheckpoint | null {
   const entries = traceEntries(trace).filter((entry) =>
     entry?.step === 'checkpoint' &&
@@ -432,16 +438,62 @@ export async function persistExecutionStep(runId: string, step: ExecutionStep): 
   if (String(run.status) === 'cancelled') throw new Error('agent_run_cancelled');
 
   const trace = traceEntries(run.execution_trace);
-  trace.push(step);
-  const { data: updated, error: updateError } = await runtimeClient
-    .from('agent_runs')
-    .update({ execution_trace: trace, current_step: (run.current_step || 0) + 1 })
-    .eq('id', runId)
-    .neq('status', 'cancelled')
-    .select('id')
-    .maybeSingle();
-  if (updateError) throw updateError;
-  if (!updated) throw new Error('agent_run_cancelled');
+  const stepIndex = step.metadata?.stepIndex;
+  const indexedStep = typeof stepIndex === 'number';
+  const currentStep = Number(run.current_step ?? 0);
+
+  if (indexedStep && step.status === 'completed') {
+    const targetStep = stepIndex + 1;
+    if (trace.some((entry) => isCompletedWorkflowStep(entry, stepIndex))) return;
+    if (currentStep > stepIndex) {
+      throw new Error(`Run cursor advanced past unpersisted step ${stepIndex}`);
+    }
+
+    const nextTrace = [...trace, step];
+    const { data: updated, error: updateError } = await runtimeClient
+      .from('agent_runs')
+      .update({ execution_trace: nextTrace, current_step: targetStep })
+      .eq('id', runId)
+      .eq('current_step', currentStep)
+      .neq('status', 'cancelled')
+      .select('id')
+      .maybeSingle();
+
+    if (updateError || !updated) {
+      const { data: latest, error: latestError } = await runtimeClient
+        .from('agent_runs')
+        .select('execution_trace, current_step, status')
+        .eq('id', runId)
+        .single();
+      if (!latestError && latest) {
+        if (String(latest.status) === 'cancelled') throw new Error('agent_run_cancelled');
+        const latestTrace = traceEntries(latest.execution_trace);
+        if (
+          Number(latest.current_step ?? 0) >= targetStep &&
+          latestTrace.some((entry) => isCompletedWorkflowStep(entry, stepIndex))
+        ) {
+          return;
+        }
+      }
+      if (updateError) throw updateError;
+      if (latestError) throw latestError;
+      throw new Error(`Run cursor changed while persisting step ${stepIndex}`);
+    }
+  } else {
+    const nextTrace = [...trace, step];
+    const targetStep = indexedStep
+      ? stepIndex
+      : currentStep + 1;
+    const { data: updated, error: updateError } = await runtimeClient
+      .from('agent_runs')
+      .update({ execution_trace: nextTrace, current_step: targetStep })
+      .eq('id', runId)
+      .neq('status', 'cancelled')
+      .select('id')
+      .maybeSingle();
+    if (updateError) throw updateError;
+    if (!updated) throw new Error('agent_run_cancelled');
+  }
 
   try {
     await runtimeClient.channel(`run:${runId}`).send({
