@@ -47,6 +47,7 @@ export class LLMToolExecutionError extends Error {
 
 export type LLMToolLoopCheckpoint = {
   version: 1;
+  phase?: 'continuation' | 'complete';
   provider: string;
   model: string;
   messages: LLMMessage[];
@@ -63,6 +64,7 @@ export type LLMToolLoopCheckpoint = {
   model_name?: string;
   stop_reason?: LLMResponse['stop_reason'];
   legacyFallbackUsed: boolean;
+  final_content?: string;
 };
 
 export class LLMToolContinuationError extends Error {
@@ -121,6 +123,7 @@ export type LLMToolLoopResult = LLMToolLoopAggregate & {
   toolsCalled: string[];
   toolExecutions: ToolExecutionRecord[];
   legacyFallbackUsed: boolean;
+  resumeCheckpoint?: LLMToolLoopCheckpoint;
 };
 
 export type LLMToolLoopStreamContext = {
@@ -212,7 +215,8 @@ function normalizedName(value: string): string {
 function validateCheckpoint(
   checkpoint: LLMToolLoopCheckpoint | null | undefined,
   provider: string,
-  model: string
+  model: string,
+  allowedNames: Set<string>
 ): void {
   if (!checkpoint) return;
   if (checkpoint.version !== 1) {
@@ -220,6 +224,15 @@ function validateCheckpoint(
   }
   if (normalizedName(checkpoint.provider) !== normalizedName(provider) || checkpoint.model !== model) {
     throw new Error('Tool-loop checkpoint provider/model does not match the requested execution');
+  }
+  if (checkpoint.phase === 'complete' && typeof checkpoint.final_content !== 'string') {
+    throw new Error('Completed tool-loop checkpoint is missing final content');
+  }
+
+  for (const toolName of checkpoint.toolsCalled) assertAllowedTool(toolName, allowedNames);
+  for (const message of checkpoint.messages) {
+    for (const call of message.tool_calls ?? []) assertAllowedTool(call.name, allowedNames);
+    if (message.role === 'tool' && message.name) assertAllowedTool(message.name, allowedNames);
   }
 }
 
@@ -260,9 +273,10 @@ export async function executeLLMToolLoop({
   if (!Number.isInteger(maxToolRounds) || maxToolRounds < 0) {
     throw new Error('maxToolRounds must be a non-negative integer');
   }
-  validateCheckpoint(resumeFrom, provider, model);
 
   const allowedNames = new Set(tools.map((tool) => tool.name));
+  validateCheckpoint(resumeFrom, provider, model, allowedNames);
+
   const currentMessages: LLMMessage[] = copyMessages(resumeFrom?.messages ?? messages);
   const toolsCalled: string[] = [...(resumeFrom?.toolsCalled ?? [])];
   const toolExecutions: ToolExecutionRecord[] = [];
@@ -293,8 +307,24 @@ export async function executeLLMToolLoop({
     throwIfAborted(signal);
   };
 
-  const buildCheckpoint = (): LLMToolLoopCheckpoint => ({
+  const aggregate = (): LLMToolLoopAggregate => ({
+    modelIterations,
+    prompt_tokens: promptTokens,
+    completion_tokens: completionTokens,
+    total_tokens: totalTokens,
+    estimated_cost: estimatedCost,
+    latency_ms: latencyMs,
+    provider_name: lastProviderName,
+    model_name: lastModelName,
+    stop_reason: lastStopReason
+  });
+
+  const buildCheckpoint = (
+    phase: 'continuation' | 'complete' = 'continuation',
+    finalContent?: string
+  ): LLMToolLoopCheckpoint => ({
     version: 1,
+    phase,
     provider: normalizedName(provider),
     model,
     messages: copyMessages(currentMessages),
@@ -310,20 +340,44 @@ export async function executeLLMToolLoop({
     provider_name: lastProviderName,
     model_name: lastModelName,
     stop_reason: lastStopReason,
-    legacyFallbackUsed
+    legacyFallbackUsed,
+    ...(phase === 'complete' ? { final_content: finalContent ?? '' } : {})
   });
 
-  const persistCheckpoint = async () => {
-    lastCheckpoint = buildCheckpoint();
-    checkpointPersisted = false;
-    if (!onCheckpoint) return;
+  const persistCheckpoint = async (
+    phase: 'continuation' | 'complete' = 'continuation',
+    finalContent?: string,
+    required = true
+  ): Promise<boolean> => {
+    const candidate = buildCheckpoint(phase, finalContent);
+    if (phase === 'continuation') {
+      lastCheckpoint = candidate;
+      checkpointPersisted = false;
+    }
+    if (!onCheckpoint) return false;
+
     try {
-      await onCheckpoint(lastCheckpoint);
+      await onCheckpoint(candidate);
+      lastCheckpoint = candidate;
       checkpointPersisted = true;
+      return true;
     } catch (error) {
-      throw new LLMToolCheckpointError(completedToolCalls, error);
+      if (required) throw new LLMToolCheckpointError(completedToolCalls, error);
+      return false;
     }
   };
+
+  if (resumeFrom?.phase === 'complete') {
+    await ensureActive();
+    return {
+      content: resumeFrom.final_content ?? '',
+      toolsCalled,
+      toolExecutions,
+      ...aggregate(),
+      legacyFallbackUsed,
+      resumeCheckpoint: resumeFrom
+    };
+  }
 
   while (true) {
     await ensureActive();
@@ -374,18 +428,7 @@ export async function executeLLMToolLoop({
     lastModelName = response.model_name ?? lastModelName ?? model;
     lastStopReason = response.stop_reason;
 
-    const aggregate: LLMToolLoopAggregate = {
-      modelIterations,
-      prompt_tokens: promptTokens,
-      completion_tokens: completionTokens,
-      total_tokens: totalTokens,
-      estimated_cost: estimatedCost,
-      latency_ms: latencyMs,
-      provider_name: lastProviderName,
-      model_name: lastModelName,
-      stop_reason: lastStopReason
-    };
-    await onModelResponse?.(response, aggregate);
+    await onModelResponse?.(response, aggregate());
 
     const nativeCalls = response.tool_calls ?? [];
     if (nativeCalls.length > 0) {
@@ -393,9 +436,7 @@ export async function executeLLMToolLoop({
         throw new LLMToolLoopLimitError(maxToolRounds);
       }
 
-      for (const call of nativeCalls) {
-        assertAllowedTool(call.name, allowedNames);
-      }
+      for (const call of nativeCalls) assertAllowedTool(call.name, allowedNames);
 
       const roundResults: ToolExecutionRecord[] = [];
       for (const call of nativeCalls) {
@@ -442,7 +483,7 @@ export async function executeLLMToolLoop({
 
       toolRounds += 1;
       await ensureActive();
-      await persistCheckpoint();
+      await persistCheckpoint('continuation');
       continue;
     }
 
@@ -496,16 +537,20 @@ export async function executeLLMToolLoop({
 
       toolRounds += 1;
       await ensureActive();
-      await persistCheckpoint();
+      await persistCheckpoint('continuation');
       continue;
     }
+
+    await ensureActive();
+    await persistCheckpoint('complete', response.content, false);
 
     return {
       content: response.content,
       toolsCalled,
       toolExecutions,
-      ...aggregate,
-      legacyFallbackUsed
+      ...aggregate(),
+      legacyFallbackUsed,
+      resumeCheckpoint: lastCheckpoint?.phase === 'complete' ? lastCheckpoint : undefined
     };
   }
 }
