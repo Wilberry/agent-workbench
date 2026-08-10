@@ -1,4 +1,7 @@
 import { agents, createServerSupabaseClient } from '@agent-workbench/sdk';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '@agent-workbench/sdk';
+import type { LLMToolDefinition } from './llm/types';
 import { getRelevantMemories } from './memory';
 import fetch from 'node-fetch';
 
@@ -13,6 +16,19 @@ type ConversationSummaryMessage = {
   role: string;
   content: string;
 };
+
+type RegistryToolRow = {
+  id: string;
+  org_id: string | null;
+  name: string;
+  slug: string;
+  description: string | null;
+  input_schema: unknown;
+  public: boolean | null;
+  created_by: string | null;
+};
+
+type ToolReference = string | Record<string, unknown>;
 
 export const toolList: Tool[] = [
   {
@@ -81,6 +97,170 @@ export const toolList: Tool[] = [
     }
   }
 ];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function normalizeToolReferences(versionTools: unknown): ToolReference[] {
+  if (!Array.isArray(versionTools)) return [];
+  return versionTools.filter(
+    (entry): entry is ToolReference => typeof entry === 'string' || isRecord(entry)
+  );
+}
+
+function builtInDefinition(tool: Tool): LLMToolDefinition {
+  return {
+    name: tool.name,
+    description: tool.description,
+    input_schema: tool.parameters
+  };
+}
+
+export function getBuiltInToolDefinitions(): LLMToolDefinition[] {
+  return toolList.map(builtInDefinition);
+}
+
+function referenceValue(reference: ToolReference, key: 'id' | 'slug' | 'name'): string | undefined {
+  if (typeof reference === 'string') {
+    return key === 'name' || key === 'slug' ? reference.trim() || undefined : undefined;
+  }
+  const value = reference[key];
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function canAccessRegistryTool(
+  tool: RegistryToolRow,
+  organizationId?: string | null,
+  ownerUserId?: string | null
+): boolean {
+  if (tool.public === true) return true;
+  if (organizationId && tool.org_id === organizationId) return true;
+  if (!organizationId && !tool.org_id && ownerUserId && tool.created_by === ownerUserId) return true;
+  return false;
+}
+
+function registryScopeRank(
+  tool: RegistryToolRow,
+  organizationId?: string | null,
+  ownerUserId?: string | null
+): number {
+  if (organizationId && tool.org_id === organizationId) return 0;
+  if (!organizationId && !tool.org_id && ownerUserId && tool.created_by === ownerUserId) return 1;
+  if (tool.public === true) return 2;
+  return 3;
+}
+
+function registryDefinition(tool: RegistryToolRow): LLMToolDefinition {
+  return {
+    name: tool.slug,
+    description: tool.description?.trim() || tool.name,
+    input_schema: isRecord(tool.input_schema)
+      ? tool.input_schema
+      : { type: 'object', properties: {} }
+  };
+}
+
+async function queryRegistryTools(
+  client: SupabaseClient<Database>,
+  field: 'id' | 'slug' | 'name',
+  value: string
+): Promise<RegistryToolRow[]> {
+  const { data, error } = await client
+    .from('tools')
+    .select('id, org_id, name, slug, description, input_schema, public, created_by')
+    .eq(field, value)
+    .limit(20);
+
+  if (error) throw error;
+  return (data ?? []) as RegistryToolRow[];
+}
+
+async function resolveRegistryReference(
+  reference: ToolReference,
+  client: SupabaseClient<Database>,
+  organizationId?: string | null,
+  ownerUserId?: string | null
+): Promise<RegistryToolRow | null> {
+  const id = referenceValue(reference, 'id');
+  const slug = referenceValue(reference, 'slug');
+  const name = referenceValue(reference, 'name');
+  const candidateGroups: RegistryToolRow[][] = [];
+
+  if (id) candidateGroups.push(await queryRegistryTools(client, 'id', id));
+  if (slug) candidateGroups.push(await queryRegistryTools(client, 'slug', slug));
+  if (name && name !== slug) {
+    candidateGroups.push(await queryRegistryTools(client, 'slug', name));
+    candidateGroups.push(await queryRegistryTools(client, 'name', name));
+  }
+
+  const candidates = Array.from(
+    new Map(candidateGroups.flat().map((tool) => [tool.id, tool])).values()
+  )
+    .filter((tool) => canAccessRegistryTool(tool, organizationId, ownerUserId))
+    .sort(
+      (a, b) =>
+        registryScopeRank(a, organizationId, ownerUserId) -
+        registryScopeRank(b, organizationId, ownerUserId)
+    );
+
+  return candidates[0] ?? null;
+}
+
+export async function resolveExecutionToolDefinitions({
+  versionTools,
+  organizationId,
+  ownerUserId,
+  client
+}: {
+  versionTools?: unknown;
+  organizationId?: string | null;
+  ownerUserId?: string | null;
+  client?: SupabaseClient<Database>;
+} = {}): Promise<LLMToolDefinition[]> {
+  const references = normalizeToolReferences(versionTools);
+
+  // Preserve the historical runtime contract: versions that do not pin tools
+  // receive the built-in tool set. A non-empty version list becomes an
+  // explicit allowlist.
+  if (references.length === 0) {
+    return getBuiltInToolDefinitions();
+  }
+
+  const supabase = client ?? createServerSupabaseClient();
+  const builtIns = new Map(toolList.map((tool) => [tool.name, tool]));
+  const definitions = new Map<string, LLMToolDefinition>();
+
+  for (const reference of references) {
+    const requestedName = referenceValue(reference, 'name') ?? referenceValue(reference, 'slug');
+    const builtIn = requestedName ? builtIns.get(requestedName) : undefined;
+    if (builtIn) {
+      definitions.set(builtIn.name, builtInDefinition(builtIn));
+      continue;
+    }
+
+    const registryTool = await resolveRegistryReference(
+      reference,
+      supabase,
+      organizationId,
+      ownerUserId
+    );
+    if (!registryTool) {
+      const label =
+        referenceValue(reference, 'id') ??
+        referenceValue(reference, 'slug') ??
+        referenceValue(reference, 'name') ??
+        '[invalid tool reference]';
+      console.warn(`Skipping unresolved or unauthorized agent-version tool: ${label}`);
+      continue;
+    }
+
+    const definition = registryDefinition(registryTool);
+    definitions.set(definition.name, definition);
+  }
+
+  return Array.from(definitions.values());
+}
 
 async function persistToolCall(params: {
   runId: string;
