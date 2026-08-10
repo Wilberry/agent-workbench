@@ -3,17 +3,22 @@ import type { Agent, AgentVersion } from './types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-function normalizeAgentVersionRow(row: any, fallbackModel = 'gpt-4o-mini') {
+function normalizeProviderName(provider?: string | null) {
+  return provider?.trim().toLowerCase() || 'openai';
+}
+
+function normalizeAgentVersionRow(row: any, fallbackModel = 'gpt-4o-mini', fallbackProvider = 'openai') {
   return {
     ...row,
-    model: row?.model ?? fallbackModel
+    model: row?.model ?? fallbackModel,
+    provider: normalizeProviderName(row?.provider ?? fallbackProvider)
   };
 }
 
 export const agents = {
   async create(
     userId: string,
-    payload: { name: string; description?: string; system_prompt: string; model?: string },
+    payload: { name: string; description?: string; system_prompt: string; model?: string; provider?: string },
     organizationId?: string | null,
     client?: SupabaseClient<Database>
   ) {
@@ -25,7 +30,8 @@ export const agents = {
         name: payload.name,
         description: payload.description ?? null,
         system_prompt: payload.system_prompt,
-        model: payload.model ?? 'gpt-4o-mini'
+        model: payload.model ?? 'gpt-4o-mini',
+        provider: normalizeProviderName(payload.provider)
       }
     ];
     const { data, error } = await supabase
@@ -75,13 +81,17 @@ export const agents = {
 
   async update(
     agentId: string,
-    updates: { name?: string; description?: string | null; system_prompt?: string; model?: string },
+    updates: { name?: string; description?: string | null; system_prompt?: string; model?: string; provider?: string },
     client?: SupabaseClient<Database>
   ) {
     const supabase = client ?? createServerSupabaseClient();
+    const normalizedUpdates = {
+      ...updates,
+      ...(updates.provider !== undefined ? { provider: normalizeProviderName(updates.provider) } : {})
+    };
     const { data, error } = await supabase
       .from('agents')
-      .update(updates)
+      .update(normalizedUpdates)
       .eq('id', agentId)
       .select('*')
       .single();
@@ -106,6 +116,7 @@ export const agents = {
       description?: string;
       system_prompt?: string;
       model?: string;
+      provider?: string;
       tools?: Record<string, unknown>[];
       workflow?: string[];
       metadata?: Record<string, unknown>;
@@ -133,6 +144,7 @@ export const agents = {
 
     const nextVersionNumber = ((versions?.[0]?.version_number as number | undefined) ?? 0) + 1;
     const versionLabel = payload.version ?? `v${nextVersionNumber}`;
+    const provider = normalizeProviderName(payload.provider ?? agent.provider);
 
     const insertPayload: Database['public']['Tables']['agent_versions']['Insert'] = {
       agent_id: agentId,
@@ -144,7 +156,8 @@ export const agents = {
       tools: payload.tools ?? [],
       metadata: payload.metadata ?? {},
       created_by: userId,
-      model: payload.model ?? agent.model ?? 'gpt-4o-mini'
+      model: payload.model ?? agent.model ?? 'gpt-4o-mini',
+      provider
     };
 
     const { data, error } = await supabase
@@ -154,7 +167,7 @@ export const agents = {
       .single();
 
     if (error) throw error;
-    return normalizeAgentVersionRow(data, payload.model ?? agent.model ?? 'gpt-4o-mini');
+    return normalizeAgentVersionRow(data, payload.model ?? agent.model ?? 'gpt-4o-mini', provider);
   },
 
   async listVersions(agentId: string, client?: SupabaseClient<Database>) {
@@ -192,13 +205,17 @@ export const agents = {
   async updateByOwner(
     agentId: string,
     userId: string,
-    updates: { name?: string; description?: string | null; system_prompt?: string; model?: string },
+    updates: { name?: string; description?: string | null; system_prompt?: string; model?: string; provider?: string },
     client?: SupabaseClient<Database>
   ) {
     const supabase = client ?? createServerSupabaseClient();
+    const normalizedUpdates = {
+      ...updates,
+      ...(updates.provider !== undefined ? { provider: normalizeProviderName(updates.provider) } : {})
+    };
     const { data, error } = await supabase
       .from('agents')
-      .update(updates)
+      .update(normalizedUpdates)
       .eq('id', agentId)
       .eq('user_id', userId)
       .select('*')
@@ -260,13 +277,16 @@ export const agents = {
 
     const { data: agent, error: agentError } = await supabase
       .from('agents')
-      .select('id, name, description, system_prompt, model, organization_id')
+      .select('id, name, description, system_prompt, model, provider, organization_id')
       .eq('id', agentId)
       .single();
 
     if (agentError || !agent) throw agentError ?? new Error('Agent not found');
 
     const latestVersion = await this.resolveAgentVersion(agentId, client);
-    return { agent, latestVersion };
+    return {
+      agent: { ...agent, provider: normalizeProviderName(agent.provider) },
+      latestVersion
+    };
   }
 };

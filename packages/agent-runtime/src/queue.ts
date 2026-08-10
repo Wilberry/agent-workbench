@@ -317,6 +317,7 @@ export type RunTelemetryUpdate = {
   estimated_cost?: number;
   latency_ms?: number;
   model_name?: string | null;
+  provider_name?: string | null;
 };
 
 export async function updateRunTelemetry(runId: string, telemetry: RunTelemetryUpdate): Promise<void> {

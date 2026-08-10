@@ -1,11 +1,9 @@
-import { openaiProvider } from './providers/openai';
-import { mockProvider } from './providers/mock';
 import type { LLMRequest, LLMResponse, LLMProvider } from './types';
-
-const providers: Record<string, LLMProvider> = {
-  openai: openaiProvider,
-  mock: mockProvider
-};
+import {
+  getLLMProviderRegistration,
+  normalizeProviderName
+} from './registry';
+import { mockProvider } from './providers/mock';
 
 export class LLMConfigurationError extends Error {
   code = 'LLM_CONFIGURATION_ERROR';
@@ -26,29 +24,42 @@ export class UnsupportedLLMProviderError extends Error {
 }
 
 function getProvider(provider?: string): LLMProvider {
-  const name = provider?.trim().toLowerCase() || 'openai';
-  const selectedProvider = providers[name];
+  const name = normalizeProviderName(provider);
 
-  if (!selectedProvider) {
+  if (name === 'openai' && process.env.USE_MOCK_OPENAI === 'true') {
+    return mockProvider;
+  }
+
+  const registration = getLLMProviderRegistration(name);
+  if (!registration) {
     throw new UnsupportedLLMProviderError(name);
   }
 
-  if (name === 'openai') {
-    if (process.env.USE_MOCK_OPENAI === 'true') {
-      return mockProvider;
-    }
-
-    if (!process.env.OPENAI_API_KEY) {
+  const missingEnv = registration.requiredEnv.filter((key) => !process.env[key]);
+  if (missingEnv.length > 0) {
+    if (name === 'openai' && missingEnv.includes('OPENAI_API_KEY')) {
       throw new LLMConfigurationError(
         'OPENAI_API_KEY is required for the OpenAI provider unless USE_MOCK_OPENAI=true is explicitly set.'
       );
     }
+
+    throw new LLMConfigurationError(
+      `${missingEnv.join(', ')} ${missingEnv.length === 1 ? 'is' : 'are'} required for the ${name} provider.`
+    );
   }
 
-  return selectedProvider;
+  return registration.provider;
 }
 
 export async function chatCompletion(request: LLMRequest): Promise<LLMResponse> {
   const provider = getProvider(request.provider);
-  return provider.chatCompletion(request);
+  const response = await provider.chatCompletion({
+    ...request,
+    provider: normalizeProviderName(request.provider)
+  });
+
+  return {
+    ...response,
+    provider_name: response.provider_name ?? normalizeProviderName(provider.name)
+  };
 }
