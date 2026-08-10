@@ -115,12 +115,12 @@ export default async function EditAgentPage({ params }: Props) {
               <h1 className="text-3xl font-semibold">Edit {typedAgent.name}</h1>
               <p className="text-slate-400">Update this agent&apos;s prompt, provider, model, and description.</p>
             </div>
-            <a
+            <Link
               href={`/agents/${typedAgent.id}`}
               className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-semibold text-slate-200 hover:border-emerald-500"
             >
               Back to agent
-            </a>
+            </Link>
           </div>
         </div>
 
@@ -171,7 +171,7 @@ export default async function EditAgentPage({ params }: Props) {
             </button>
 
             <button
-              type="button"
+              type="submit"
               formAction={async (formData: FormData) => deleteAgent(formData, params.id)}
               className="w-full rounded-2xl border border-red-700 bg-red-900 px-4 py-3 text-sm font-semibold text-red-200 transition hover:border-red-500"
             >
