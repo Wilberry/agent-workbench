@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   executeLLMToolLoop,
   getBuiltInToolDefinitions,
+  LLMToolExecutionError,
   LLMToolLoopLimitError,
   LLMToolNotAllowedError,
   resolveExecutionToolDefinitions,
@@ -162,6 +163,48 @@ describe('shared native tool execution loop', () => {
     })).rejects.toBeInstanceOf(LLMToolNotAllowedError);
 
     expect(executeTool).not.toHaveBeenCalled();
+  });
+
+  it('checkpoints billed model usage and wraps a partial multi-tool failure', async () => {
+    const complete = vi.fn(async () => response({
+      stop_reason: 'tool_use',
+      tool_calls: [
+        { id: 'call_1', name: 'search_memory', arguments: { query: 'first' } },
+        { id: 'call_2', name: 'get_agent_info', arguments: {} }
+      ]
+    }));
+    const executeTool = vi.fn(async (name: string) => {
+      if (name === 'get_agent_info') throw new Error('downstream tool failed');
+      return { ok: true };
+    });
+    const onModelResponse = vi.fn();
+
+    let captured: unknown;
+    try {
+      await executeLLMToolLoop({
+        provider: 'openai',
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: 'Call two tools.' }],
+        tools: [searchTool, infoTool],
+        complete,
+        executeTool,
+        onModelResponse
+      });
+    } catch (error) {
+      captured = error;
+    }
+
+    expect(captured).toBeInstanceOf(LLMToolExecutionError);
+    expect((captured as LLMToolExecutionError).toolName).toBe('get_agent_info');
+    expect((captured as LLMToolExecutionError).completedToolCalls).toBe(1);
+    expect(executeTool).toHaveBeenCalledTimes(2);
+    expect(complete).toHaveBeenCalledTimes(1);
+    expect(onModelResponse).toHaveBeenCalledTimes(1);
+    expect(onModelResponse.mock.calls[0]?.[1]).toEqual(expect.objectContaining({
+      total_tokens: 15,
+      estimated_cost: 0.001,
+      modelIterations: 1
+    }));
   });
 
   it('does not execute another tool after the configured round limit', async () => {
