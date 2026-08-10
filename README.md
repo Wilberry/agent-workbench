@@ -19,7 +19,7 @@ Agent Workbench is a production-oriented pre-release platform. The backend archi
 - Provider-aware pricing, retry, timeout, readiness, and telemetry behavior
 - Single-agent and multi-agent workflow execution
 - Memory retrieval and embeddings
-- Tool execution loop
+- Provider-native tool/function calling with version-pinned tool allowlists
 - Background agent-run queue
 - Retry, stale-job recovery, and dead-letter behavior
 - Run traces, replay foundations, token usage, latency, and cost telemetry
@@ -38,14 +38,14 @@ Agent Workbench is a production-oriented pre-release platform. The backend archi
 - Provider/model selection is limited to configured providers and metered catalog models, while an existing metered selection can remain visible if its provider is temporarily unconfigured
 - Cost estimates use a versioned provider-aware local pricing catalog; unknown or unmetered provider/model pairs fail explicitly
 - Provider requests use bounded retries, Retry-After handling, request timeouts, and durable queue recovery for retryable failures
-- Multi-agent workflow failures may fall back to the single-agent runtime, with fallback state recorded in execution traces
+- Multi-agent workflow failures may fall back to the single-agent runtime, except after tool side effects where fallback/replay is intentionally disabled
 - Evaluation cancellation is cooperative between examples; an already-started provider request may finish before the worker observes cancellation
-- The current tool loop uses a structured text protocol rather than provider-native tool/function calling
+- Native tool/function calling is the primary runtime path; the legacy structured-text `TOOL_CALL` protocol remains temporarily as a compatibility fallback
 
 ### Planned
 
 - Broader provider coverage after the provider-selection and observability UX is stable
-- Provider-native structured tool calling and richer streaming
+- Richer streaming and stronger workflow-runtime semantics
 - Public API authentication and API keys
 - CLI and polished external SDK workflows
 - MCP expansion
@@ -74,7 +74,7 @@ tests/
 
 The current runtime supports:
 
-- version-aware provider, model, and system-prompt selection
+- version-aware provider, model, system-prompt, workflow, and tool selection
 - live OpenAI and Anthropic execution
 - provider-aware pricing and telemetry
 - bounded provider retries, Retry-After handling, and request timeouts
@@ -82,9 +82,11 @@ The current runtime supports:
 - conversation persistence
 - memory retrieval
 - embeddings
-- tool invocation
+- provider-native tool/function calling
+- version-pinned built-in and tenant-scoped registry tool allowlists
+- server-owned agent/conversation context injection for built-in tools
 - multi-agent workflow routing
-- single-agent fallback
+- single-agent fallback when replay is side-effect safe
 - persisted trace events
 - token and latency telemetry
 - estimated-cost telemetry when provider/model pricing is known
@@ -104,7 +106,7 @@ The evaluation system currently supports:
 - cooperative cancellation for queued/running evaluations and experiments
 - latency, token, trace, and cost aggregation
 
-With v0.6 Async Evaluations complete and the v0.7 Model Platform foundation implemented, the next engineering milestone is v0.8 Agent Tooling: provider-native tool/function calling, richer streaming, and stronger workflow-runtime semantics.
+With v0.6 Async Evaluations and v0.7 Model Platform complete, v0.8 Agent Tooling is in progress. Provider-native tool/function calling is implemented; richer streaming and stronger workflow-runtime semantics remain next.
 
 ## Testing and validation
 
@@ -193,7 +195,7 @@ The original phase-based roadmap has been retired because the repository has out
 
 ### v0.8 — Agent Tooling
 
-- [ ] Provider-native tool/function calling
+- [x] Provider-native tool/function calling
 - [ ] Richer streaming
 - [ ] Stronger workflow-runtime semantics
 

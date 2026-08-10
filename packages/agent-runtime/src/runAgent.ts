@@ -2,9 +2,17 @@ import type { Message } from '@agent-workbench/sdk';
 import { agents, createServerSupabaseClient } from '@agent-workbench/sdk';
 import { generateEmbedding } from './embeddings';
 import { getRelevantMemories } from './memory';
-import { runTool, toolList } from './tools';
+import { resolveExecutionToolDefinitions } from './tools';
 import { runMultiAgentWorkflow } from './agentRouter';
-import { chatCompletion } from './llm/client';
+import type { LLMMessage, LLMToolDefinition } from './llm/types';
+import { LLMToolArgumentsError } from './llm/tooling';
+import {
+  executeLLMToolLoop,
+  LLMToolContinuationError,
+  LLMToolExecutionError,
+  LLMToolLoopLimitError,
+  LLMToolNotAllowedError
+} from './toolExecution';
 import { updateRunTelemetry } from './queue';
 import { persistTraceEvent } from './tracing';
 
@@ -36,7 +44,7 @@ function formatMemoryContext(memories: Array<{ role: 'user' | 'assistant'; conte
     .join('\n');
 }
 
-function buildSystemPrompt(agentPrompt: string, tools: typeof toolList, memoryContext: string) {
+function buildSystemPrompt(agentPrompt: string, tools: LLMToolDefinition[], memoryContext: string) {
   const toolDescriptions = tools
     .map((tool) => `- ${tool.name}: ${tool.description}`)
     .join('\n');
@@ -49,11 +57,10 @@ You may:
 - Ask clarifying questions when the user request is ambiguous.
 
 TOOLS AVAILABLE:
-${toolDescriptions}
+${toolDescriptions || '- No tools are enabled for this agent version.'}
 
-When calling a tool, respond exactly with the following format:
+Use structured tool calling when it is available. Legacy fallback only: if structured tool calling is unavailable and you must call a tool, respond exactly with:
 TOOL_CALL: {"name":"tool_name","args":{...}}
-Only call a tool when necessary.
 
 MEMORY CONTEXT:
 ${memoryContext}
@@ -62,27 +69,20 @@ CONVERSATION HISTORY:
 ${agentPrompt}`;
 }
 
-function parseToolCall(text: string) {
-  const match = text.match(/TOOL_CALL:\s*({[\s\S]*})/);
-  if (!match) return null;
-
-  try {
-    const toolCall = JSON.parse(match[1]);
-    if (typeof toolCall.name !== 'string' || typeof toolCall.args !== 'object') {
-      return null;
-    }
-    return toolCall as { name: string; args: Record<string, unknown> };
-  } catch {
-    return null;
-  }
-}
-
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
 function normalizeProviderName(provider?: string | null): string {
   return provider?.trim().toLowerCase() || 'openai';
+}
+
+function isToolFailure(error: unknown): boolean {
+  return error instanceof LLMToolNotAllowedError ||
+    error instanceof LLMToolArgumentsError ||
+    error instanceof LLMToolExecutionError ||
+    error instanceof LLMToolContinuationError ||
+    error instanceof LLMToolLoopLimitError;
 }
 
 export async function runAgent({
@@ -137,12 +137,16 @@ export async function runAgent({
 
   const memories = await getRelevantMemories({ conversationId, query: userMessage });
   const memoryContext = formatMemoryContext(memories);
-  const conversationHistory = ((history ?? []) as Message[]).map((message) => ({ role: message.role, content: message.content }));
+  const conversationHistory: LLMMessage[] = ((history ?? []) as Message[]).map((message) => ({
+    role: message.role,
+    content: message.content
+  }));
 
   let selectedSystemPrompt = agent.system_prompt;
   let selectedModel = agent.model ?? 'gpt-4o-mini';
   let selectedProvider = normalizeProviderName(agent.provider);
   let versionWorkflow: string[] | undefined = undefined;
+  let versionTools: unknown = undefined;
 
   if (latestVersion) {
     if (latestVersion.system_prompt) selectedSystemPrompt = latestVersion.system_prompt;
@@ -157,10 +161,25 @@ export async function runAgent({
     if (Array.isArray(latestVersion.workflow) && latestVersion.workflow.length > 0) {
       versionWorkflow = latestVersion.workflow;
     }
+    if (Array.isArray(latestVersion.tools) && latestVersion.tools.length > 0) {
+      versionTools = latestVersion.tools;
+    }
   }
 
-  const baseSystemPrompt = buildSystemPrompt(selectedSystemPrompt, toolList, memoryContext);
-  const messageBatch: Array<{ role: string; content: string }> = [
+  let ownerUserId: string | null = null;
+  if (!agent.organization_id && Array.isArray(versionTools) && versionTools.length > 0) {
+    const fullAgent = await agents.get(agentId, supabase);
+    ownerUserId = fullAgent?.user_id ?? null;
+  }
+
+  const availableTools = await resolveExecutionToolDefinitions({
+    versionTools,
+    organizationId: agent.organization_id,
+    ownerUserId,
+    client: supabase
+  });
+  const baseSystemPrompt = buildSystemPrompt(selectedSystemPrompt, availableTools, memoryContext);
+  const messageBatch: LLMMessage[] = [
     { role: 'system', content: baseSystemPrompt },
     ...conversationHistory,
     { role: 'user', content: userMessage }
@@ -191,11 +210,16 @@ export async function runAgent({
       });
       const result = await runMultiAgentWorkflow({
         userId,
+        agentId,
         conversationId,
         message: userMessage,
         workflow: versionWorkflow,
         memories,
-        runId
+        systemPrompt: selectedSystemPrompt,
+        runId,
+        organizationId: agent.organization_id,
+        ownerUserId,
+        tools: availableTools
       }, selectedModel, selectedProvider);
 
       finalAssistantResponse = result.message;
@@ -214,6 +238,17 @@ export async function runAgent({
       lastProviderName = result.trace.provider_name ?? lastProviderName;
       lastModelName = result.trace.model_name ?? lastModelName;
     } catch (err) {
+      if (isToolFailure(err)) {
+        void persistEvent('workflow_failed', {
+          workflow: versionWorkflow,
+          provider: selectedProvider,
+          model: selectedModel,
+          error: errorMessage(err),
+          fallback: 'disabled-for-tool-failure'
+        });
+        throw err;
+      }
+
       workflowFailed = true;
       fallbackReason = errorMessage(err);
       console.error('Multi-agent workflow failed, falling back to single-agent:', err);
@@ -228,7 +263,6 @@ export async function runAgent({
   }
 
   if (!finalAssistantResponse) {
-    let currentMessages = [...messageBatch];
     void persistEvent('run_started', {
       workflow: ['single-agent'],
       message: userMessage,
@@ -236,41 +270,38 @@ export async function runAgent({
       model: selectedModel,
       fallback: workflowFailed
     });
-    for (let iteration = 0; iteration < 3; iteration += 1) {
-      modelIterations += 1;
-      const assistantResult = await chatCompletion({
-        provider: selectedProvider,
-        model: selectedModel,
-        messages: currentMessages,
-        temperature: 0.7,
-        max_tokens: 1200
-      });
-      totalPromptTokens += assistantResult.prompt_tokens;
-      totalCompletionTokens += assistantResult.completion_tokens;
-      totalTokens += assistantResult.total_tokens;
-      totalEstimatedCost += assistantResult.estimated_cost;
-      totalLatencyMs += assistantResult.latency_ms;
-      lastProviderName = assistantResult.provider_name;
-      lastModelName = assistantResult.model_name;
 
-      const assistantResponse = assistantResult.content;
-      const toolCall = parseToolCall(assistantResponse);
-
-      if (!toolCall) {
-        finalAssistantResponse = assistantResponse;
-        break;
+    const result = await executeLLMToolLoop({
+      provider: selectedProvider,
+      model: selectedModel,
+      messages: messageBatch,
+      tools: availableTools,
+      runId,
+      organizationId: agent.organization_id,
+      ownerUserId,
+      agentId,
+      conversationId,
+      maxToolRounds: 2,
+      onToolExecuted(record) {
+        void persistEvent('tool_call', {
+          name: record.call.name,
+          args: record.call.arguments,
+          latency_ms: record.latency_ms,
+          mode: record.mode
+        });
       }
+    });
 
-      toolsCalled.push(toolCall.name);
-      const toolStart = Date.now();
-      const toolResult = await runTool(toolCall.name, toolCall.args, runId);
-      void persistEvent('tool_call', { name: toolCall.name, args: toolCall.args, latency_ms: Date.now() - toolStart });
-      const toolResultText = JSON.stringify(toolResult, null, 2);
-
-      currentMessages.push({ role: 'assistant', content: assistantResponse });
-      currentMessages.push({ role: 'system', content: `Tool ${toolCall.name} executed. Result:\n${toolResultText}` });
-      currentMessages.push({ role: 'user', content: 'Continue the response using the tool result above.' });
-    }
+    finalAssistantResponse = result.content;
+    toolsCalled.push(...result.toolsCalled);
+    modelIterations += result.modelIterations;
+    totalPromptTokens += result.prompt_tokens;
+    totalCompletionTokens += result.completion_tokens;
+    totalTokens += result.total_tokens;
+    totalEstimatedCost += result.estimated_cost;
+    totalLatencyMs += result.latency_ms;
+    lastProviderName = result.provider_name ?? lastProviderName;
+    lastModelName = result.model_name ?? lastModelName;
   }
 
   if (!finalAssistantResponse) {
