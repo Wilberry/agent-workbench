@@ -5,7 +5,7 @@ export type Agent = {
   description: string | null;
   system_prompt: string;
   model: string;
-  provider: string;
+  provider?: string;
   created_at: string;
 };
 
@@ -34,7 +34,7 @@ export type AgentVersion = {
   description: string | null;
   system_prompt: string;
   model: string;
-  provider: string;
+  provider?: string;
   workflow: string[];
   tools: Record<string, unknown>[];
   metadata: Record<string, unknown>;
