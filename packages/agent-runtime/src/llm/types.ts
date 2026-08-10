@@ -35,14 +35,16 @@ export type LLMProvider = {
 };
 
 export type ModelPricing = {
+  provider?: string;
   model: string;
   currency: 'USD';
   promptPer1k: number;
   completionPer1k: number;
   aliases?: string[];
+  catalogVersion?: string;
 };
 
 export type PricingProvider = {
-  getModelPricing(model: string): ModelPricing | null;
-  estimateCost(model: string, usage: LLMUsage): number;
+  getModelPricing(model: string, provider?: string): ModelPricing | null;
+  estimateCost(model: string, usage: LLMUsage, provider?: string): number;
 };
