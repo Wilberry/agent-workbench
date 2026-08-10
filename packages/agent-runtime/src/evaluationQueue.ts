@@ -1,5 +1,6 @@
 import {
   createServerSupabaseClient,
+  EvaluationRunCancelledError,
   evaluations,
   experiments
 } from '@agent-workbench/sdk';
@@ -22,6 +23,12 @@ function parseLeaseInterval(leaseInterval: string): number {
   if (unit.startsWith('second')) return value * 1000;
   if (unit.startsWith('minute')) return value * 60 * 1000;
   return value * 60 * 60 * 1000;
+}
+
+function isCancellationError(error: unknown): boolean {
+  if (error instanceof EvaluationRunCancelledError) return true;
+  const message = String((error as Error)?.message ?? error ?? '');
+  return message.includes('evaluation_run_cancelled') || message.includes('was cancelled');
 }
 
 export async function dequeueEvaluationRun(): Promise<EvaluationRunQueueJob | null> {
@@ -156,24 +163,34 @@ async function markEvaluationQueueJobCompleted(runId: string): Promise<void> {
       error_message: null,
       updated_at: new Date().toISOString()
     })
-    .eq('evaluation_run_id', runId);
+    .eq('evaluation_run_id', runId)
+    .eq('status', 'running');
   if (error) throw error;
 }
 
 async function incrementEvaluationAttempts(
   runId: string,
   failureReason: string
-): Promise<{ attempts: number; maxAttempts: number; isDead: boolean }> {
+): Promise<{ attempts: number; maxAttempts: number; isDead: boolean; wasCancelled: boolean }> {
   const supabase = createServerSupabaseClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const queueClient = supabase as any;
 
   const { data: row, error: fetchError } = await queueClient
     .from('evaluation_run_jobs')
-    .select('attempts,max_attempts')
+    .select('attempts,max_attempts,status')
     .eq('evaluation_run_id', runId)
     .single();
   if (fetchError || !row) throw fetchError ?? new Error('Evaluation queue job not found');
+
+  if (row.status === 'cancelled') {
+    return {
+      attempts: Number(row.attempts ?? 0),
+      maxAttempts: Number(row.max_attempts ?? 5),
+      isDead: false,
+      wasCancelled: true
+    };
+  }
 
   const attempts = Number(row.attempts ?? 0) + 1;
   const maxAttempts = Number(row.max_attempts ?? 5);
@@ -188,10 +205,11 @@ async function incrementEvaluationAttempts(
       error_message: failureReason,
       updated_at: new Date().toISOString()
     })
-    .eq('evaluation_run_id', runId);
+    .eq('evaluation_run_id', runId)
+    .neq('status', 'cancelled');
   if (updateError) throw updateError;
 
-  return { attempts, maxAttempts, isDead };
+  return { attempts, maxAttempts, isDead, wasCancelled: false };
 }
 
 export async function processEvaluationRunJob(job: EvaluationRunQueueJob): Promise<void> {
@@ -207,8 +225,24 @@ export async function processEvaluationRunJob(job: EvaluationRunQueueJob): Promi
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
 
+    if (isCancellationError(error)) {
+      await experiments.syncExperimentStatusForRun(job.runId, supabase);
+      return;
+    }
+
     try {
-      const { attempts, maxAttempts, isDead } = await incrementEvaluationAttempts(job.runId, errorMessage);
+      const latestRun = await evaluations.getEvaluationRun(job.runId, supabase);
+      if (latestRun.status === 'cancelled') {
+        await experiments.syncExperimentStatusForRun(job.runId, supabase);
+        return;
+      }
+
+      const { attempts, maxAttempts, isDead, wasCancelled } = await incrementEvaluationAttempts(job.runId, errorMessage);
+      if (wasCancelled) {
+        await experiments.syncExperimentStatusForRun(job.runId, supabase);
+        return;
+      }
+
       if (isDead) {
         await evaluations.markEvaluationRunFailed(
           job.runId,
@@ -217,7 +251,11 @@ export async function processEvaluationRunJob(job: EvaluationRunQueueJob): Promi
         );
         await experiments.syncExperimentStatusForRun(job.runId, supabase);
       } else {
-        await supabase.from('evaluation_runs').update({ status: 'pending' }).eq('id', job.runId);
+        await supabase
+          .from('evaluation_runs')
+          .update({ status: 'pending' })
+          .eq('id', job.runId)
+          .neq('status', 'cancelled');
       }
     } catch (queueError) {
       console.warn('Failed to update evaluation queue state:', queueError);
