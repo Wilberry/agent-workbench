@@ -1,7 +1,6 @@
 import type { LLMRequest, LLMResponse, LLMProvider } from './types';
 import {
   getLLMProviderRegistration,
-  listLLMProviders,
   normalizeProviderName
 } from './registry';
 import { mockProvider } from './providers/mock';
@@ -53,5 +52,3 @@ export async function chatCompletion(request: LLMRequest): Promise<LLMResponse> 
     provider: normalizeProviderName(request.provider)
   });
 }
-
-export { listLLMProviders };
