@@ -268,6 +268,38 @@ export async function resolveExecutionToolDefinitions({
   return Array.from(definitions.values());
 }
 
+async function resolveContextFromRun(
+  runId: string,
+  context: ToolExecutionContext | undefined,
+  client: ServerSupabaseClient
+): Promise<ToolExecutionContext> {
+  if (context?.agentId && context?.conversationId) return context;
+
+  const { data: run, error: runError } = await client
+    .from('agent_runs')
+    .select('conversation_id, user_id')
+    .eq('id', runId)
+    .single();
+  if (runError || !run?.conversation_id) {
+    throw runError ?? new Error(`Unable to resolve execution context for run ${runId}`);
+  }
+
+  const { data: conversation, error: conversationError } = await client
+    .from('conversations')
+    .select('agent_id')
+    .eq('id', run.conversation_id)
+    .single();
+  if (conversationError || !conversation?.agent_id) {
+    throw conversationError ?? new Error(`Unable to resolve agent context for run ${runId}`);
+  }
+
+  return {
+    ownerUserId: context?.ownerUserId ?? run.user_id ?? null,
+    conversationId: context?.conversationId ?? run.conversation_id,
+    agentId: context?.agentId ?? conversation.agent_id
+  };
+}
+
 function contextualizeBuiltInArgs(
   toolName: string,
   args: Record<string, unknown>,
@@ -334,7 +366,11 @@ export async function runTool(
   try {
     const tool = toolList.find((item) => item.name === name);
     if (tool) {
-      inputPayload = contextualizeBuiltInArgs(name, args, context);
+      const supabase = createServerSupabaseClient();
+      const executionContext = runId
+        ? await resolveContextFromRun(runId, context, supabase)
+        : context;
+      inputPayload = contextualizeBuiltInArgs(name, args, executionContext);
       outputPayload = await tool.execute(inputPayload);
       return outputPayload;
     }
