@@ -1,7 +1,13 @@
 import { createServerSupabaseClient, agents } from '@agent-workbench/sdk';
-import { chatCompletion } from './llm/client';
 import { isProviderRequestError } from './llm/http';
-import { runTool } from './tools';
+import { LLMToolArgumentsError } from './llm/tooling';
+import type { LLMMessage } from './llm/types';
+import { resolveExecutionToolDefinitions } from './tools';
+import {
+  executeLLMToolLoop,
+  LLMToolLoopLimitError,
+  LLMToolNotAllowedError
+} from './toolExecution';
 import { generateEmbedding } from './embeddings';
 import { randomUUID } from 'crypto';
 import {
@@ -49,21 +55,6 @@ function formatMemoryContext(
     .join('\n');
 }
 
-function parseToolCall(text: string) {
-  const match = text.match(/TOOL_CALL:\s*({[\s\S]*})/);
-  if (!match) return null;
-
-  try {
-    const parsed = JSON.parse(match[1]);
-    if (typeof parsed.name !== 'string' || typeof parsed.args !== 'object' || parsed.args === null) {
-      return null;
-    }
-    return parsed as { name: string; args: Record<string, unknown> };
-  } catch {
-    return null;
-  }
-}
-
 function normalizeProviderName(provider?: string | null): string {
   return provider?.trim().toLowerCase() || 'openai';
 }
@@ -74,6 +65,10 @@ async function sleep(ms: number): Promise<void> {
 
 function getExponentialBackoff(retryCount: number): number {
   return Math.pow(2, retryCount) * 1000; // 1s, 2s, 4s
+}
+
+function isNonRetryableToolContractError(error: unknown): boolean {
+  return error instanceof LLMToolNotAllowedError || error instanceof LLMToolArgumentsError;
 }
 
 // NOTE: Step-level persistence and realtime broadcasts are handled by `persistExecutionStep` in queue.ts
@@ -122,6 +117,7 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
     let selectedModel = (agent?.model as string | undefined) ?? 'gpt-4o-mini';
     let selectedProvider = normalizeProviderName(agent?.provider as string | undefined);
     let versionWorkflow: string[] | undefined;
+    let versionTools: unknown = undefined;
 
     if (pinnedAgentVersionId) {
       try {
@@ -139,6 +135,9 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
           if (Array.isArray(pinnedVersion.workflow) && pinnedVersion.workflow.length > 0) {
             versionWorkflow = pinnedVersion.workflow;
           }
+          if (Array.isArray(pinnedVersion.tools) && pinnedVersion.tools.length > 0) {
+            versionTools = pinnedVersion.tools;
+          }
         }
       } catch (err) {
         console.warn(`Failed to load pinned agent version ${pinnedAgentVersionId}:`, err);
@@ -149,13 +148,20 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
     const agentModel = selectedModel;
     const agentProvider = selectedProvider;
     const effectiveWorkflow = versionWorkflow ?? job.workflow;
+    const availableTools = await resolveExecutionToolDefinitions({
+      versionTools,
+      organizationId,
+      ownerUserId: agent?.user_id ?? null,
+      client: supabase
+    });
 
     void persistEvent('run_started', {
       workflow: effectiveWorkflow,
       message,
       organizationId,
       provider: agentProvider,
-      model: agentModel
+      model: agentModel,
+      tools: availableTools.map((tool) => tool.name)
     });
 
     await supabase.from('agent_runs').update({ status: 'running' }).eq('id', runId);
@@ -183,7 +189,7 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
       // are delegated to the durable queue layer below.
       for (let retryAttempt = 0; retryAttempt <= MAX_RETRIES; retryAttempt += 1) {
         try {
-          const rolePrompt = [
+          const rolePrompt: LLMMessage[] = [
             {
               role: 'system',
               content: `${baseAgentPrompt}You are ${role}. ${roleDescription(role)} Use available memory and tools when appropriate.`
@@ -194,22 +200,36 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
             }
           ];
 
-          const agentResult = await chatCompletion({
+          const roleResult = await executeLLMToolLoop({
             provider: agentProvider,
             model: agentModel,
             messages: rolePrompt,
-            temperature: 0.7,
-            max_tokens: 1200
+            tools: availableTools,
+            runId,
+            organizationId,
+            maxToolRounds: 2,
+            onToolExecuted(record) {
+              void persistEvent('tool_call', {
+                stepIndex,
+                toolName: record.call.name,
+                status: 'success',
+                input: record.call.arguments,
+                output: record.result,
+                latency_ms: record.latency_ms,
+                mode: record.mode
+              });
+            }
           });
-          const agentOutput = agentResult.content;
-          let finalOutput = agentOutput;
-          totalInputTokens += agentResult.prompt_tokens;
-          totalOutputTokens += agentResult.completion_tokens;
-          totalTokens += agentResult.total_tokens;
-          totalEstimatedCost += agentResult.estimated_cost;
-          totalLatencyMs += agentResult.latency_ms;
-          lastProviderName = agentResult.provider_name ?? agentProvider;
-          lastModelName = agentResult.model_name;
+
+          const finalOutput = roleResult.content;
+          toolsCalled.push(...roleResult.toolsCalled);
+          totalInputTokens += roleResult.prompt_tokens;
+          totalOutputTokens += roleResult.completion_tokens;
+          totalTokens += roleResult.total_tokens;
+          totalEstimatedCost += roleResult.estimated_cost;
+          totalLatencyMs += roleResult.latency_ms;
+          lastProviderName = roleResult.provider_name ?? agentProvider;
+          lastModelName = roleResult.model_name;
           await updateRunTelemetry(runId, {
             input_tokens: totalInputTokens,
             output_tokens: totalOutputTokens,
@@ -220,63 +240,8 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
             model_name: lastModelName
           });
 
-          let stepTokens = agentResult.total_tokens;
-          let stepLatencyMs = agentResult.latency_ms;
-
-          const toolCall = parseToolCall(agentOutput);
-          if (toolCall) {
-            toolsCalled.push(toolCall.name);
-            const toolCallStart = Date.now();
-
-            const toolResult = await runTool(toolCall.name, toolCall.args, runId, organizationId);
-            void persistEvent('tool_call', {
-              stepIndex,
-              toolName: toolCall.name,
-              status: 'success',
-              input: toolCall.args,
-              output: toolResult,
-              latency_ms: Date.now() - toolCallStart
-            });
-
-            const toolPrompt = [
-              ...rolePrompt,
-              {
-                role: 'system',
-                content: `Tool ${toolCall.name} executed. Result:\n${JSON.stringify(toolResult, null, 2)}`
-              },
-              {
-                role: 'user',
-                content: 'Use the tool result to continue your role output and complete the task.'
-              }
-            ];
-
-            const toolResultOutput = await chatCompletion({
-              provider: agentProvider,
-              model: agentModel,
-              messages: toolPrompt,
-              temperature: 0.7,
-              max_tokens: 1200
-            });
-            finalOutput = toolResultOutput.content;
-            totalInputTokens += toolResultOutput.prompt_tokens;
-            totalOutputTokens += toolResultOutput.completion_tokens;
-            totalTokens += toolResultOutput.total_tokens;
-            totalEstimatedCost += toolResultOutput.estimated_cost;
-            totalLatencyMs += toolResultOutput.latency_ms;
-            lastProviderName = toolResultOutput.provider_name ?? agentProvider;
-            lastModelName = toolResultOutput.model_name;
-            await updateRunTelemetry(runId, {
-              input_tokens: totalInputTokens,
-              output_tokens: totalOutputTokens,
-              total_tokens: totalTokens,
-              estimated_cost: totalEstimatedCost,
-              latency_ms: totalLatencyMs,
-              provider_name: lastProviderName,
-              model_name: lastModelName
-            });
-            stepTokens += toolResultOutput.total_tokens;
-            stepLatencyMs += toolResultOutput.latency_ms;
-          }
+          const stepTokens = roleResult.total_tokens;
+          const stepLatencyMs = roleResult.latency_ms;
 
           episode.push(`${role.toUpperCase()} OUTPUT:\n${finalOutput}`);
           lastAgentOutput = finalOutput;
@@ -307,7 +272,8 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
             model: lastModelName,
             tokens: stepTokens,
             latency_ms: stepLatencyMs,
-            toolName: toolsCalled[0] ?? null
+            toolName: toolsCalled[0] ?? null,
+            toolsCalled
           });
 
           stepFailed = false;
@@ -322,6 +288,11 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
               `Step ${stepIndex} (${role}) provider request failed after ${error.attempts} transport attempt(s):`,
               stepError
             );
+            break;
+          }
+
+          if (isNonRetryableToolContractError(error) || error instanceof LLMToolLoopLimitError) {
+            console.error(`Step ${stepIndex} (${role}) tool contract failed:`, stepError);
             break;
           }
 
@@ -344,7 +315,8 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
           error: stepError,
           provider: lastProviderName ?? agentProvider,
           model: lastModelName ?? agentModel,
-          toolName: toolsCalled[0] ?? null
+          toolName: toolsCalled[0] ?? null,
+          toolsCalled
         });
 
         const errorExecStep: ExecutionStep = {
@@ -418,6 +390,16 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
         await markRunFailed(runId, `Non-retryable provider failure: ${errorMessage}`);
       } catch (qErr) {
         console.warn('Failed to mark non-retryable provider failure terminal:', qErr);
+      }
+      throw error;
+    }
+
+    if (isNonRetryableToolContractError(error)) {
+      try {
+        await markQueueJobFailed(runId, errorMessage);
+        await markRunFailed(runId, `Non-retryable tool contract failure: ${errorMessage}`);
+      } catch (qErr) {
+        console.warn('Failed to mark non-retryable tool contract failure terminal:', qErr);
       }
       throw error;
     }
