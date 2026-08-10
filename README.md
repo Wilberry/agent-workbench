@@ -8,7 +8,7 @@ Agent Workbench is an open-source developer platform for versioned agent executi
 
 ## Current status
 
-Agent Workbench is a production-oriented pre-release platform. The backend architecture and v0.7 model-platform foundations are substantially implemented, while later developer-platform and agent-tooling capabilities remain planned.
+Agent Workbench is a production-oriented pre-release platform. The backend architecture and v0.7 model-platform foundations are substantially implemented, while later developer-platform and workflow-runtime capabilities remain planned.
 
 ### Implemented
 
@@ -17,6 +17,8 @@ Agent Workbench is a production-oriented pre-release platform. The backend archi
 - Explicit provider/model selection for agent and version configuration
 - Live OpenAI and Anthropic model providers
 - Provider-aware pricing, retry, timeout, readiness, and telemetry behavior
+- Provider-neutral streaming across OpenAI and Anthropic
+- Live agent SSE events for text deltas, tool-call lifecycle, usage, completion, and errors
 - Single-agent and multi-agent workflow execution
 - Memory retrieval and embeddings
 - Provider-native tool/function calling with version-pinned tool allowlists
@@ -37,15 +39,17 @@ Agent Workbench is a production-oriented pre-release platform. The backend archi
 - OpenAI and Anthropic are live providers; a mock provider is available for explicit test use
 - Provider/model selection is limited to configured providers and metered catalog models, while an existing metered selection can remain visible if its provider is temporarily unconfigured
 - Cost estimates use a versioned provider-aware local pricing catalog; unknown or unmetered provider/model pairs fail explicitly
-- Provider requests use bounded retries, Retry-After handling, request timeouts, and durable queue recovery for retryable failures
+- Buffered provider requests use bounded retries, Retry-After handling, request timeouts, and durable queue recovery for retryable failures
+- Streaming provider requests may retry only before the first response byte; once output has been emitted, failures are surfaced instead of replaying partial text or tool-call deltas
 - Multi-agent workflow failures may fall back to the single-agent runtime, except after tool side effects where fallback/replay is intentionally disabled
 - Evaluation cancellation is cooperative between examples; an already-started provider request may finish before the worker observes cancellation
 - Native tool/function calling is the primary runtime path; the legacy structured-text `TOOL_CALL` protocol remains temporarily as a compatibility fallback
+- `runAgentEventStream()` exposes live SSE execution events; client disconnect currently stops delivery but does not yet cancel the underlying agent execution
 
 ### Planned
 
 - Broader provider coverage after the provider-selection and observability UX is stable
-- Richer streaming and stronger workflow-runtime semantics
+- Stronger workflow-runtime semantics, including explicit execution cancellation/resume behavior
 - Public API authentication and API keys
 - CLI and polished external SDK workflows
 - MCP expansion
@@ -77,7 +81,11 @@ The current runtime supports:
 - version-aware provider, model, system-prompt, workflow, and tool selection
 - live OpenAI and Anthropic execution
 - provider-aware pricing and telemetry
+- buffered and provider-native streaming completion paths
+- normalized `response_start`, text-delta, tool-call, usage, and `response_end` events
+- live SSE agent execution through `runAgentEventStream()`
 - bounded provider retries, Retry-After handling, and request timeouts
+- streaming retry only before the first emitted byte
 - local non-billable provider readiness reporting
 - conversation persistence
 - memory retrieval
@@ -85,7 +93,7 @@ The current runtime supports:
 - provider-native tool/function calling
 - version-pinned built-in and tenant-scoped registry tool allowlists
 - server-owned agent/conversation context injection for built-in tools
-- multi-agent workflow routing
+- multi-agent workflow routing with role-tagged streaming events
 - single-agent fallback when replay is side-effect safe
 - persisted trace events
 - token and latency telemetry
@@ -106,7 +114,7 @@ The evaluation system currently supports:
 - cooperative cancellation for queued/running evaluations and experiments
 - latency, token, trace, and cost aggregation
 
-With v0.6 Async Evaluations and v0.7 Model Platform complete, v0.8 Agent Tooling is in progress. Provider-native tool/function calling is implemented; richer streaming and stronger workflow-runtime semantics remain next.
+With v0.6 Async Evaluations and v0.7 Model Platform complete, v0.8 Agent Tooling is in progress. Provider-native tool/function calling and richer streaming are implemented; stronger workflow-runtime semantics remain next.
 
 ## Testing and validation
 
@@ -196,7 +204,7 @@ The original phase-based roadmap has been retired because the repository has out
 ### v0.8 — Agent Tooling
 
 - [x] Provider-native tool/function calling
-- [ ] Richer streaming
+- [x] Richer streaming
 - [ ] Stronger workflow-runtime semantics
 
 ### v0.9 — Developer Platform
