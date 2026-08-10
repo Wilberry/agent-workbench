@@ -5,6 +5,11 @@ import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-next
 import { agents } from '@agent-workbench/sdk';
 import type { Database } from '@/types/database';
 import type { Agent } from '@agent-workbench/sdk';
+import ProviderModelFields from '@/components/ProviderModelFields';
+import {
+  assertSelectableProviderModel,
+  getModelProviderCatalog
+} from '@/lib/modelProviderCatalog';
 
 async function updateAgent(formData: FormData, agentId: string) {
   'use server';
@@ -13,7 +18,6 @@ async function updateAgent(formData: FormData, agentId: string) {
   const name = formData.get('name')?.toString() ?? '';
   const description = formData.get('description')?.toString() ?? '';
   const system_prompt = formData.get('system_prompt')?.toString() ?? '';
-  const model = formData.get('model')?.toString() ?? 'gpt-4o-mini';
 
   if (!name || !system_prompt) {
     throw new Error('Name and system prompt are required');
@@ -27,6 +31,22 @@ async function updateAgent(formData: FormData, agentId: string) {
     throw new Error('Not authenticated');
   }
 
+  const currentAgent = await agents.getByOwner(agentId, user.id, supabase);
+  if (!currentAgent) {
+    throw new Error('Agent not found');
+  }
+
+  const selection = assertSelectableProviderModel(
+    formData.get('provider')?.toString(),
+    formData.get('model')?.toString(),
+    {
+      allowCurrent: {
+        provider: currentAgent.provider ?? 'openai',
+        model: currentAgent.model
+      }
+    }
+  );
+
   await agents.updateByOwner(
     agentId,
     user.id,
@@ -34,7 +54,8 @@ async function updateAgent(formData: FormData, agentId: string) {
       name,
       description: description || null,
       system_prompt,
-      model
+      provider: selection.provider,
+      model: selection.model
     },
     supabase
   );
@@ -77,12 +98,13 @@ export default async function EditAgentPage({ params }: Props) {
 
   const agent = await agents.getByOwner(params.id, user.id, supabase);
   const error = !agent ? new Error('Agent not found') : null;
-
   const typedAgent = agent as Agent | null;
 
   if (error || !typedAgent) {
     return <div className="p-6 text-red-400">Agent not found.</div>;
   }
+
+  const providerCatalog = getModelProviderCatalog();
 
   return (
     <main className="min-h-screen bg-slate-950 text-white p-6">
@@ -91,14 +113,14 @@ export default async function EditAgentPage({ params }: Props) {
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h1 className="text-3xl font-semibold">Edit {typedAgent.name}</h1>
-              <p className="text-slate-400">Update this agent&apos;s prompt, description, and model.</p>
+              <p className="text-slate-400">Update this agent&apos;s prompt, provider, model, and description.</p>
             </div>
-            <a
+            <Link
               href={`/agents/${typedAgent.id}`}
               className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-semibold text-slate-200 hover:border-emerald-500"
             >
               Back to agent
-            </a>
+            </Link>
           </div>
         </div>
 
@@ -134,14 +156,11 @@ export default async function EditAgentPage({ params }: Props) {
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-semibold text-slate-200">Model</label>
-            <input
-              name="model"
-              defaultValue={typedAgent.model}
-              className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-emerald-500"
-            />
-          </div>
+          <ProviderModelFields
+            catalog={providerCatalog}
+            initialProvider={typedAgent.provider ?? 'openai'}
+            initialModel={typedAgent.model}
+          />
 
           <div className="grid gap-3 md:grid-cols-[1fr_auto]">
             <button
@@ -152,7 +171,7 @@ export default async function EditAgentPage({ params }: Props) {
             </button>
 
             <button
-              type="button"
+              type="submit"
               formAction={async (formData: FormData) => deleteAgent(formData, params.id)}
               className="w-full rounded-2xl border border-red-700 bg-red-900 px-4 py-3 text-sm font-semibold text-red-200 transition hover:border-red-500"
             >
@@ -164,4 +183,3 @@ export default async function EditAgentPage({ params }: Props) {
     </main>
   );
 }
-

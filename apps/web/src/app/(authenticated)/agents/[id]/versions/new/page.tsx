@@ -4,6 +4,11 @@ import { cookies, headers } from 'next/headers';
 import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-nextjs';
 import { agents } from '@agent-workbench/sdk';
 import type { Database } from '@/types/database';
+import ProviderModelFields from '@/components/ProviderModelFields';
+import {
+  assertSelectableProviderModel,
+  getModelProviderCatalog
+} from '@/lib/modelProviderCatalog';
 
 async function createVersion(formData: FormData, agentId: string) {
   'use server';
@@ -12,7 +17,6 @@ async function createVersion(formData: FormData, agentId: string) {
   const name = formData.get('version')?.toString().trim() ?? '';
   const description = formData.get('description')?.toString().trim() ?? '';
   const system_prompt = formData.get('system_prompt')?.toString() ?? '';
-  const model = formData.get('model')?.toString() ?? '';
   const workflow = formData.get('workflow')?.toString().split(',').map((item) => item.trim()).filter(Boolean) ?? [];
 
   if (!system_prompt) {
@@ -29,11 +33,23 @@ async function createVersion(formData: FormData, agentId: string) {
     throw new Error('Agent not found');
   }
 
-  const nextVersion = await agents.createVersion(agentId, user.id, {
+  const selection = assertSelectableProviderModel(
+    formData.get('provider')?.toString(),
+    formData.get('model')?.toString(),
+    {
+      allowCurrent: {
+        provider: agent.provider ?? 'openai',
+        model: agent.model
+      }
+    }
+  );
+
+  await agents.createVersion(agentId, user.id, {
     version: name || undefined,
     description: description || undefined,
     system_prompt: system_prompt || undefined,
-    model: model || undefined,
+    provider: selection.provider,
+    model: selection.model,
     workflow: workflow.length ? workflow : undefined
   }, supabase);
 
@@ -59,6 +75,7 @@ export default async function NewVersionPage({ params, searchParams }: Props) {
   }
 
   const successMessage = searchParams.versionCreated ? 'Version created successfully!' : null;
+  const providerCatalog = getModelProviderCatalog();
 
   return (
     <main className="min-h-screen bg-slate-950 text-white p-6">
@@ -110,15 +127,11 @@ export default async function NewVersionPage({ params, searchParams }: Props) {
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-semibold text-slate-200">Model</label>
-            <input
-              name="model"
-              defaultValue={agent.model}
-              className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-emerald-500"
-              placeholder="gpt-4o-mini"
-            />
-          </div>
+          <ProviderModelFields
+            catalog={providerCatalog}
+            initialProvider={agent.provider ?? 'openai'}
+            initialModel={agent.model}
+          />
 
           <div>
             <label className="block text-sm font-semibold text-slate-200">Workflow</label>

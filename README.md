@@ -8,12 +8,15 @@ Agent Workbench is an open-source developer platform for versioned agent executi
 
 ## Current status
 
-Agent Workbench is a production-oriented pre-release platform. The backend architecture is substantially implemented, while several developer-platform and provider-expansion capabilities remain planned.
+Agent Workbench is a production-oriented pre-release platform. The backend architecture and v0.7 model-platform foundations are substantially implemented, while later developer-platform and agent-tooling capabilities remain planned.
 
 ### Implemented
 
 - Agent creation and versioning
 - Version-aware agent execution
+- Explicit provider/model selection for agent and version configuration
+- Live OpenAI and Anthropic model providers
+- Provider-aware pricing, retry, timeout, readiness, and telemetry behavior
 - Single-agent and multi-agent workflow execution
 - Memory retrieval and embeddings
 - Tool execution loop
@@ -31,16 +34,17 @@ Agent Workbench is a production-oriented pre-release platform. The backend archi
 
 ### Beta / stabilization
 
-- OpenAI is the only live LLM provider currently registered; a mock provider is available for explicit test use
-- Cost estimates are based on a local pricing catalog; unknown models now raise an explicit pricing error instead of being reported as free
+- OpenAI and Anthropic are live providers; a mock provider is available for explicit test use
+- Provider/model selection is limited to configured providers and metered catalog models, while an existing metered selection can remain visible if its provider is temporarily unconfigured
+- Cost estimates use a versioned provider-aware local pricing catalog; unknown or unmetered provider/model pairs fail explicitly
+- Provider requests use bounded retries, Retry-After handling, request timeouts, and durable queue recovery for retryable failures
 - Multi-agent workflow failures may fall back to the single-agent runtime, with fallback state recorded in execution traces
 - Evaluation cancellation is cooperative between examples; an already-started provider request may finish before the worker observes cancellation
 - The current tool loop uses a structured text protocol rather than provider-native tool/function calling
 
 ### Planned
 
-- Additional model providers such as Anthropic, Gemini, and OpenRouter
-- Provider health, retry, and pricing-registry improvements
+- Broader provider coverage after the provider-selection and observability UX is stable
 - Provider-native structured tool calling and richer streaming
 - Public API authentication and API keys
 - CLI and polished external SDK workflows
@@ -70,7 +74,11 @@ tests/
 
 The current runtime supports:
 
-- version-aware model and system-prompt selection
+- version-aware provider, model, and system-prompt selection
+- live OpenAI and Anthropic execution
+- provider-aware pricing and telemetry
+- bounded provider retries, Retry-After handling, and request timeouts
+- local non-billable provider readiness reporting
 - conversation persistence
 - memory retrieval
 - embeddings
@@ -79,9 +87,9 @@ The current runtime supports:
 - single-agent fallback
 - persisted trace events
 - token and latency telemetry
-- estimated-cost telemetry when model pricing is known
+- estimated-cost telemetry when provider/model pricing is known
 
-Provider behavior is intentionally strict: missing OpenAI credentials fail with a configuration error unless `USE_MOCK_OPENAI=true` is explicitly set, and unsupported provider names are rejected instead of silently becoming OpenAI.
+Provider behavior is intentionally strict: missing provider credentials fail with configuration errors, unsupported provider names are rejected instead of silently becoming OpenAI, and user-facing configuration only exposes metered provider/model pairs from the runtime catalog.
 
 ## Evaluations and experiments
 
@@ -96,7 +104,7 @@ The evaluation system currently supports:
 - cooperative cancellation for queued/running evaluations and experiments
 - latency, token, trace, and cost aggregation
 
-With v0.6 complete, the next engineering milestone is v0.7 Model Platform: additional live providers, provider-specific reliability behavior, health reporting, and a versioned pricing registry.
+With v0.6 Async Evaluations complete and the v0.7 Model Platform foundation implemented, the next engineering milestone is v0.8 Agent Tooling: provider-native tool/function calling, richer streaming, and stronger workflow-runtime semantics.
 
 ## Testing and validation
 
@@ -147,6 +155,7 @@ See `docs/local-development.md` for environment requirements.
 
 - TypeScript agent runtime
 - OpenAI
+- Anthropic
 - Vitest
 - Playwright
 - k6
@@ -176,10 +185,11 @@ The original phase-based roadmap has been retired because the repository has out
 
 ### v0.7 — Model Platform
 
-- [ ] Additional live providers
-- [ ] Provider-specific retry policies
-- [ ] Provider health reporting
-- [ ] Versioned pricing registry
+- [x] Additional live providers
+- [x] Provider-specific retry policies
+- [x] Provider health reporting
+- [x] Versioned pricing registry
+- [x] Provider/model selection surface backed by configured, metered catalog entries
 
 ### v0.8 — Agent Tooling
 
