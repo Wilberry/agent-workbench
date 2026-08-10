@@ -48,7 +48,6 @@ const processing = new Set<string>();
 
 export async function enqueueAgentRun(job: AgentRunQueueJob): Promise<string> {
   const supabase = createServerSupabaseClient();
-
   const runPayload = {
     user_id: job.userId,
     conversation_id: job.conversationId,
@@ -64,35 +63,28 @@ export async function enqueueAgentRun(job: AgentRunQueueJob): Promise<string> {
     .insert([runPayload])
     .select('id')
     .single();
+  if (runError || !run) throw runError ?? new Error('Failed to create agent run');
 
-  if (runError || !run) {
-    throw runError ?? new Error('Failed to create agent run');
-  }
-
-  const { error: queueError } = await supabase.from('agent_run_jobs').insert([
-    {
-      run_id: run.id,
-      user_id: job.userId,
-      conversation_id: job.conversationId,
-      message: job.message,
-      workflow: job.workflow,
-      memories: job.memories,
-      status: 'pending'
-    }
-  ]);
-
+  const { error: queueError } = await supabase.from('agent_run_jobs').insert([{
+    run_id: run.id,
+    user_id: job.userId,
+    conversation_id: job.conversationId,
+    message: job.message,
+    workflow: job.workflow,
+    memories: job.memories,
+    status: 'pending'
+  }]);
   if (queueError) {
     console.error('Failed to enqueue agent run job', { queueError, job });
     throw queueError;
   }
-
   return run.id;
 }
 
 export async function dequeueAgentRun(userId?: string): Promise<AgentRunQueueJob | null> {
   const supabase = createServerSupabaseClient();
-
   let rpcError: any;
+
   if (!userId) {
     try {
       const { data, error } = await supabase.rpc('dequeue_agent_run_job');
@@ -100,7 +92,6 @@ export async function dequeueAgentRun(userId?: string): Promise<AgentRunQueueJob
         const rowCandidate = data as any;
         const row = Array.isArray(rowCandidate) ? rowCandidate[0] : rowCandidate;
         if (!row) return null;
-
         return {
           runId: row.run_id,
           userId: row.user_id,
@@ -110,7 +101,6 @@ export async function dequeueAgentRun(userId?: string): Promise<AgentRunQueueJob
           memories: row.memories ?? []
         };
       }
-
       rpcError = error;
     } catch (err) {
       rpcError = err;
@@ -127,14 +117,12 @@ export async function dequeueAgentRun(userId?: string): Promise<AgentRunQueueJob
     .from('agent_run_jobs')
     .select('id, run_id, user_id, conversation_id, message, workflow, memories')
     .eq('status', 'pending');
-
   if (userId) query.eq('user_id', userId);
 
   const { data: candidate, error: selectError } = await query
     .order('created_at', { ascending: true })
     .limit(1)
     .maybeSingle();
-
   if (selectError) throw selectError;
   if (!candidate) return null;
 
@@ -145,7 +133,6 @@ export async function dequeueAgentRun(userId?: string): Promise<AgentRunQueueJob
     .eq('status', 'pending')
     .select('id')
     .maybeSingle();
-
   if (updateError) throw updateError;
   if (!claimed) return null;
 
@@ -162,24 +149,18 @@ export async function dequeueAgentRun(userId?: string): Promise<AgentRunQueueJob
 function parseLeaseInterval(leaseInterval: string): number {
   const match = leaseInterval.match(/^(\d+)\s*(second|seconds|minute|minutes|hour|hours|day|days)$/i);
   if (!match) throw new Error(`Unsupported lease interval: ${leaseInterval}`);
-
   const value = Number(match[1]);
   const unit = match[2].toLowerCase();
   switch (unit) {
     case 'second':
-    case 'seconds':
-      return value * 1000;
+    case 'seconds': return value * 1000;
     case 'minute':
-    case 'minutes':
-      return value * 60 * 1000;
+    case 'minutes': return value * 60 * 1000;
     case 'hour':
-    case 'hours':
-      return value * 60 * 60 * 1000;
+    case 'hours': return value * 60 * 60 * 1000;
     case 'day':
-    case 'days':
-      return value * 24 * 60 * 60 * 1000;
-    default:
-      throw new Error(`Unsupported lease interval unit: ${unit}`);
+    case 'days': return value * 24 * 60 * 60 * 1000;
+    default: throw new Error(`Unsupported lease interval unit: ${unit}`);
   }
 }
 
@@ -188,15 +169,14 @@ export async function incrementAttemptsAndMaybeDead(
   failureReason?: string
 ): Promise<{ attempts: number; maxAttempts: number; isDead: boolean; wasCancelled: boolean }> {
   const supabase = createServerSupabaseClient();
-
   const { data: row, error: fetchErr } = await supabase
     .from('agent_run_jobs')
     .select('attempts, max_attempts, status')
     .eq('run_id', runId)
     .single();
-
   if (fetchErr || !row) throw fetchErr ?? new Error('Queue job not found for attempts increment');
-  if (row.status === 'cancelled') {
+
+  if (String(row.status) === 'cancelled') {
     return {
       attempts: Number(row.attempts ?? 0),
       maxAttempts: Number(row.max_attempts ?? 0),
@@ -208,7 +188,6 @@ export async function incrementAttemptsAndMaybeDead(
   const attempts = Number(row.attempts ?? 0) + 1;
   const maxAttempts = Number(row.max_attempts ?? 0);
   const isDead = attempts >= maxAttempts;
-
   const { error: updateErr } = await supabase
     .from('agent_run_jobs')
     .update({
@@ -219,15 +198,13 @@ export async function incrementAttemptsAndMaybeDead(
       locked_at: null
     })
     .eq('run_id', runId)
-    .neq('status', 'cancelled');
-
+    .neq('status', 'cancelled' as any);
   if (updateErr) throw updateErr;
   return { attempts, maxAttempts, isDead, wasCancelled: false };
 }
 
 export async function reclaimStaleJobs(leaseInterval = '5 minutes'): Promise<string[]> {
   const supabase = createServerSupabaseClient();
-
   let rpcError: any;
   try {
     const { data, error } = await supabase.rpc('reclaim_stale_agent_run_jobs', { lease_interval: leaseInterval });
@@ -242,9 +219,7 @@ export async function reclaimStaleJobs(leaseInterval = '5 minutes'): Promise<str
   }
 
   const errorMessage = String(rpcError?.message ?? rpcError ?? '');
-  if (!errorMessage.includes('ambiguous') && !errorMessage.includes('invalid')) {
-    throw rpcError;
-  }
+  if (!errorMessage.includes('ambiguous') && !errorMessage.includes('invalid')) throw rpcError;
 
   const cutoff = new Date(Date.now() - parseLeaseInterval(leaseInterval)).toISOString();
   const { data: rows, error: selectError } = await supabase
@@ -253,7 +228,6 @@ export async function reclaimStaleJobs(leaseInterval = '5 minutes'): Promise<str
     .eq('status', 'running')
     .not('locked_at', 'is', null)
     .lt('locked_at', cutoff);
-
   if (selectError) throw selectError;
 
   const staleRows = Array.isArray(rows) ? rows.filter((row: any) => row.attempts < row.max_attempts) : [];
@@ -269,7 +243,6 @@ export async function reclaimStaleJobs(leaseInterval = '5 minutes'): Promise<str
     if (updateError) throw updateError;
     if (reclaimed) ids.push(row.id);
   }
-
   return ids;
 }
 
@@ -279,7 +252,7 @@ export async function markQueueJobCompleted(runId: string): Promise<void> {
     .from('agent_run_jobs')
     .update({ status: 'completed', locked_at: null, updated_at: new Date().toISOString() })
     .eq('run_id', runId)
-    .neq('status', 'cancelled');
+    .neq('status', 'cancelled' as any);
   if (error) throw error;
 }
 
@@ -287,21 +260,16 @@ export async function markQueueJobFailed(runId: string, failureReason?: string):
   const supabase = createServerSupabaseClient();
   const { error } = await supabase
     .from('agent_run_jobs')
-    .update({
-      status: 'failed',
-      locked_at: null,
-      updated_at: new Date().toISOString(),
-      error_message: failureReason ?? null
-    })
+    .update({ status: 'failed', locked_at: null, updated_at: new Date().toISOString(), error_message: failureReason ?? null })
     .eq('run_id', runId)
-    .neq('status', 'cancelled');
+    .neq('status', 'cancelled' as any);
   if (error) throw error;
 }
 
 export async function markQueueJobCancelled(runId: string, reason?: string | null): Promise<void> {
-  const supabase = createServerSupabaseClient();
+  const runtimeClient = createServerSupabaseClient() as any;
   const cancelledAt = new Date().toISOString();
-  const { error } = await supabase
+  const { error } = await runtimeClient
     .from('agent_run_jobs')
     .update({
       status: 'cancelled',
@@ -366,18 +334,13 @@ function traceEntries(trace: unknown): ExecutionStep[] {
   return Array.isArray(trace) ? trace as ExecutionStep[] : [];
 }
 
-export function getRunCheckpoint(
-  trace: unknown,
-  stepIndex: number,
-  role?: string
-): LLMToolLoopCheckpoint | null {
-  const entries = traceEntries(trace)
-    .filter((entry) =>
-      entry?.step === 'checkpoint' &&
-      entry?.status === 'completed' &&
-      entry?.metadata?.stepIndex === stepIndex &&
-      (!role || entry?.metadata?.role === role)
-    );
+export function getRunCheckpoint(trace: unknown, stepIndex: number, role?: string): LLMToolLoopCheckpoint | null {
+  const entries = traceEntries(trace).filter((entry) =>
+    entry?.step === 'checkpoint' &&
+    entry?.status === 'completed' &&
+    entry?.metadata?.stepIndex === stepIndex &&
+    (!role || entry?.metadata?.role === role)
+  );
   const checkpoint = entries[entries.length - 1]?.metadata?.checkpoint;
   return checkpoint?.version === 1 ? checkpoint : null;
 }
@@ -391,12 +354,10 @@ export function rebuildWorkflowEpisode(trace: unknown, currentStep: number): str
     entry?.step !== 'error' &&
     typeof entry?.output === 'string'
   );
-
   const explicitlyIndexed = completed
     .filter((entry) => typeof entry.metadata?.stepIndex === 'number' && entry.metadata.stepIndex < currentStep)
     .sort((a, b) => Number(a.metadata?.stepIndex) - Number(b.metadata?.stepIndex));
   const selected = explicitlyIndexed.length > 0 ? explicitlyIndexed : completed.slice(0, currentStep);
-
   return selected.map((entry) => `${String(entry.step).toUpperCase()} OUTPUT:\n${String(entry.output)}`);
 }
 
@@ -406,14 +367,14 @@ export async function persistRunCheckpoint(
   role: string,
   checkpoint: LLMToolLoopCheckpoint
 ): Promise<void> {
-  const supabase = createServerSupabaseClient();
-  const { data: run, error: fetchError } = await supabase
+  const runtimeClient = createServerSupabaseClient() as any;
+  const { data: run, error: fetchError } = await runtimeClient
     .from('agent_runs')
     .select('execution_trace, status')
     .eq('id', runId)
     .single();
   if (fetchError || !run) throw fetchError ?? new Error('Run not found');
-  if (run.status === 'cancelled') throw new Error('agent_run_cancelled');
+  if (String(run.status) === 'cancelled') throw new Error('agent_run_cancelled');
 
   const trace = traceEntries(run.execution_trace).filter((entry) => !(
     entry.step === 'checkpoint' && entry.metadata?.stepIndex === stepIndex
@@ -428,7 +389,7 @@ export async function persistRunCheckpoint(
   };
   trace.push(entry);
 
-  const { data: updated, error: updateError } = await supabase
+  const { data: updated, error: updateError } = await runtimeClient
     .from('agent_runs')
     .update({ execution_trace: trace })
     .eq('id', runId)
@@ -440,19 +401,19 @@ export async function persistRunCheckpoint(
 }
 
 export async function clearRunCheckpoint(runId: string, stepIndex: number): Promise<void> {
-  const supabase = createServerSupabaseClient();
-  const { data: run, error: fetchError } = await supabase
+  const runtimeClient = createServerSupabaseClient() as any;
+  const { data: run, error: fetchError } = await runtimeClient
     .from('agent_runs')
     .select('execution_trace, status')
     .eq('id', runId)
     .single();
   if (fetchError || !run) throw fetchError ?? new Error('Run not found');
-  if (run.status === 'cancelled') return;
+  if (String(run.status) === 'cancelled') return;
 
   const trace = traceEntries(run.execution_trace).filter((entry) => !(
     entry.step === 'checkpoint' && entry.metadata?.stepIndex === stepIndex
   ));
-  const { error } = await supabase
+  const { error } = await runtimeClient
     .from('agent_runs')
     .update({ execution_trace: trace })
     .eq('id', runId)
@@ -461,24 +422,20 @@ export async function clearRunCheckpoint(runId: string, stepIndex: number): Prom
 }
 
 export async function persistExecutionStep(runId: string, step: ExecutionStep): Promise<void> {
-  const supabase = createServerSupabaseClient();
-  const { data: run, error: fetchError } = await supabase
+  const runtimeClient = createServerSupabaseClient() as any;
+  const { data: run, error: fetchError } = await runtimeClient
     .from('agent_runs')
     .select('execution_trace, current_step, status')
     .eq('id', runId)
     .single();
   if (fetchError || !run) throw fetchError ?? new Error('Run not found');
-  if (run.status === 'cancelled') throw new Error('agent_run_cancelled');
+  if (String(run.status) === 'cancelled') throw new Error('agent_run_cancelled');
 
   const trace = traceEntries(run.execution_trace);
   trace.push(step);
-
-  const { data: updated, error: updateError } = await supabase
+  const { data: updated, error: updateError } = await runtimeClient
     .from('agent_runs')
-    .update({
-      execution_trace: trace,
-      current_step: (run.current_step || 0) + 1
-    })
+    .update({ execution_trace: trace, current_step: (run.current_step || 0) + 1 })
     .eq('id', runId)
     .neq('status', 'cancelled')
     .select('id')
@@ -487,8 +444,7 @@ export async function persistExecutionStep(runId: string, step: ExecutionStep): 
   if (!updated) throw new Error('agent_run_cancelled');
 
   try {
-    // @ts-ignore - runtime API
-    await supabase.channel(`run:${runId}`).send({
+    await runtimeClient.channel(`run:${runId}`).send({
       type: 'broadcast',
       event: 'execution_step',
       payload: step
@@ -499,8 +455,8 @@ export async function persistExecutionStep(runId: string, step: ExecutionStep): 
 }
 
 export async function markRunCompleted(runId: string): Promise<void> {
-  const supabase = createServerSupabaseClient();
-  const { data: run, error: fetchError } = await supabase
+  const runtimeClient = createServerSupabaseClient() as any;
+  const { data: run, error: fetchError } = await runtimeClient
     .from('agent_runs')
     .select('id, organization_id, total_tokens, estimated_cost, status')
     .eq('id', runId)
@@ -509,9 +465,9 @@ export async function markRunCompleted(runId: string): Promise<void> {
     console.warn('Failed to fetch run for usage recording:', fetchError?.message ?? 'not found');
     return;
   }
-  if (run.status === 'cancelled' || run.status === 'completed') return;
+  if (String(run.status) === 'cancelled' || String(run.status) === 'completed') return;
 
-  const { data: completed, error } = await supabase
+  const { data: completed, error } = await runtimeClient
     .from('agent_runs')
     .update({ status: 'completed' })
     .eq('id', runId)
@@ -535,8 +491,7 @@ export async function markRunCompleted(runId: string): Promise<void> {
   }
 
   try {
-    // @ts-ignore
-    await supabase.channel(`run:${runId}`).send({
+    await runtimeClient.channel(`run:${runId}`).send({
       type: 'broadcast',
       event: 'run_completed',
       payload: { runId, timestamp: new Date().toISOString() }
@@ -547,16 +502,16 @@ export async function markRunCompleted(runId: string): Promise<void> {
 }
 
 export async function markRunFailed(runId: string, errorMessage: string): Promise<void> {
-  const supabase = createServerSupabaseClient();
-  const { data: run, error: fetchError } = await supabase
+  const runtimeClient = createServerSupabaseClient() as any;
+  const { data: run, error: fetchError } = await runtimeClient
     .from('agent_runs')
     .select('id, organization_id, status')
     .eq('id', runId)
     .single();
   if (fetchError) console.warn('Failed to fetch run for failure recording:', fetchError.message);
-  if (!run || run.status === 'cancelled' || run.status === 'failed') return;
+  if (!run || String(run.status) === 'cancelled' || String(run.status) === 'failed') return;
 
-  const { data: failed, error } = await supabase
+  const { data: failed, error } = await runtimeClient
     .from('agent_runs')
     .update({ status: 'failed', error_message: errorMessage })
     .eq('id', runId)
@@ -576,8 +531,7 @@ export async function markRunFailed(runId: string, errorMessage: string): Promis
   }
 
   try {
-    // @ts-ignore
-    await supabase.channel(`run:${runId}`).send({
+    await runtimeClient.channel(`run:${runId}`).send({
       type: 'broadcast',
       event: 'run_failed',
       payload: { runId, error: errorMessage, timestamp: new Date().toISOString() }
@@ -588,10 +542,10 @@ export async function markRunFailed(runId: string, errorMessage: string): Promis
 }
 
 export async function markRunCancelled(runId: string, reason?: string | null): Promise<void> {
-  const supabase = createServerSupabaseClient();
+  const runtimeClient = createServerSupabaseClient() as any;
   const cancelledAt = new Date().toISOString();
   const cancellationReason = reason?.trim() || null;
-  const { error } = await supabase
+  const { error } = await runtimeClient
     .from('agent_runs')
     .update({
       status: 'cancelled',
@@ -604,8 +558,7 @@ export async function markRunCancelled(runId: string, reason?: string | null): P
   if (error) throw error;
 
   try {
-    // @ts-ignore
-    await supabase.channel(`run:${runId}`).send({
+    await runtimeClient.channel(`run:${runId}`).send({
       type: 'broadcast',
       event: 'run_cancelled',
       payload: { runId, reason: cancellationReason, timestamp: cancelledAt }
