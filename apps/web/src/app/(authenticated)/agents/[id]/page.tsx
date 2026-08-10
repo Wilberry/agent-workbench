@@ -15,6 +15,12 @@ type Props = {
   };
 };
 
+function providerLabel(provider?: string | null) {
+  if (!provider || provider === 'openai') return 'OpenAI';
+  if (provider === 'anthropic') return 'Anthropic';
+  return provider;
+}
+
 export default async function AgentPage({ params }: Props) {
   const supabase = createServerComponentSupabaseClient({ headers, cookies });
   const {
@@ -27,10 +33,7 @@ export default async function AgentPage({ params }: Props) {
     return <div className="p-6 text-red-400">Agent not found.</div>;
   }
 
-  // Fetch agent versions
   const versions = await agents.listVersions(agent.id, supabase);
-
-  // Get current version
   const currentVersion = await agents.getLatestVersion(agent.id, supabase);
 
   let currentVisibility: 'public' | 'private' = 'private';
@@ -45,6 +48,9 @@ export default async function AgentPage({ params }: Props) {
     return <div className="p-6 text-red-400">Unable to create conversation.</div>;
   }
 
+  const activeProvider = currentVersion?.provider ?? agent.provider ?? 'openai';
+  const activeModel = currentVersion?.model ?? agent.model;
+
   return (
     <main className="min-h-screen bg-slate-950 text-white p-6">
       <div className="mx-auto max-w-5xl space-y-6">
@@ -52,10 +58,11 @@ export default async function AgentPage({ params }: Props) {
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h1 className="text-3xl font-semibold">{agent.name}</h1>
-              <p className="mt-2 text-slate-400">Chat with your agent powered by the configured model.</p>
+              <p className="mt-2 text-slate-400">Chat with your agent powered by the configured provider and model.</p>
               <div className="mt-3 flex flex-wrap gap-3 text-sm text-slate-400">
                 <span>Current version: {currentVersion?.version ?? 'None'}</span>
-                <span>Model: {currentVersion?.model ?? agent.model}</span>
+                <span>Provider: {providerLabel(activeProvider)}</span>
+                <span>Model: {activeModel}</span>
                 <span>Workflow: {currentVersion?.workflow?.length ? currentVersion.workflow.join(' → ') : 'Default'}</span>
               </div>
             </div>
@@ -67,7 +74,7 @@ export default async function AgentPage({ params }: Props) {
                 Edit agent
               </Link>
               <Link
-                href={{ pathname: '/agents/[id]/versions/new', query: { id: agent.id } }}
+                href={`/agents/${agent.id}/versions/new`}
                 className="rounded-2xl border border-slate-700 bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400"
               >
                 Create version
@@ -118,4 +125,3 @@ export default async function AgentPage({ params }: Props) {
     </main>
   );
 }
-
