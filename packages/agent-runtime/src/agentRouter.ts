@@ -7,6 +7,7 @@ export type ExecutionTrace = {
   toolsCalled: string[];
   modelIterations: number;
   agentsUsed: string[];
+  provider_name?: string;
   model_name?: string;
   prompt_tokens?: number;
   completion_tokens?: number;
@@ -37,16 +38,25 @@ export type AgentWorkflowResult = {
   trace: ExecutionTrace;
 };
 
-export async function callOpenAI(
+export async function callLLM(
   messages: Array<{ role: string; content: string }>,
-  model = 'gpt-4o-mini'
+  model = 'gpt-4o-mini',
+  provider = 'openai'
 ): Promise<LLMResponse> {
   return chatCompletion({
+    provider,
     model,
     messages,
     temperature: 0.7,
     max_tokens: 1200
   });
+}
+
+export async function callOpenAI(
+  messages: Array<{ role: string; content: string }>,
+  model = 'gpt-4o-mini'
+): Promise<LLMResponse> {
+  return callLLM(messages, model, 'openai');
 }
 
 function formatMemoryContext(memories: MemorySnippet[] = []) {
@@ -91,7 +101,8 @@ function roleDescription(role: string) {
 
 export async function runMultiAgentWorkflow(
   { userId, conversationId, message, workflow, memories = [], systemPrompt, runId }: AgentWorkflowInput,
-  modelOverride?: string
+  modelOverride?: string,
+  providerOverride = 'openai'
 ): Promise<AgentWorkflowResult> {
   const agentRoles = workflow && workflow.length > 0 ? workflow : ['Planner', 'Executor', 'Reviewer'];
   const memoryContext = formatMemoryContext(memories);
@@ -102,6 +113,7 @@ export async function runMultiAgentWorkflow(
   let totalTokens = 0;
   let totalEstimatedCost = 0;
   let totalLatencyMs = 0;
+  let lastProviderName: string | undefined;
   let lastModelName: string | undefined;
   const episode: string[] = [];
   const steps: Array<{ name: string; latency?: number; input?: unknown; output?: unknown }> = [];
@@ -119,7 +131,7 @@ export async function runMultiAgentWorkflow(
       }
     ];
 
-    const agentResponse = await callOpenAI(rolePrompt, modelOverride ?? 'gpt-4o-mini');
+    const agentResponse = await callLLM(rolePrompt, modelOverride ?? 'gpt-4o-mini', providerOverride);
     modelIterations += 1;
     let finalOutput = agentResponse.content;
     totalPromptTokens += agentResponse.prompt_tokens;
@@ -127,6 +139,7 @@ export async function runMultiAgentWorkflow(
     totalTokens += agentResponse.total_tokens;
     totalEstimatedCost += agentResponse.estimated_cost;
     totalLatencyMs += agentResponse.latency_ms;
+    lastProviderName = agentResponse.provider_name;
     lastModelName = agentResponse.model_name;
 
     const toolCall = parseToolCall(finalOutput);
@@ -149,7 +162,7 @@ export async function runMultiAgentWorkflow(
         }
       ];
 
-      const toolResponse = await callOpenAI(toolPrompt, modelOverride ?? 'gpt-4o-mini');
+      const toolResponse = await callLLM(toolPrompt, modelOverride ?? 'gpt-4o-mini', providerOverride);
       finalOutput = toolResponse.content;
       modelIterations += 1;
       totalPromptTokens += toolResponse.prompt_tokens;
@@ -157,6 +170,7 @@ export async function runMultiAgentWorkflow(
       totalTokens += toolResponse.total_tokens;
       totalEstimatedCost += toolResponse.estimated_cost;
       totalLatencyMs += toolResponse.latency_ms;
+      lastProviderName = toolResponse.provider_name;
       lastModelName = toolResponse.model_name;
     }
 
@@ -173,6 +187,7 @@ export async function runMultiAgentWorkflow(
       toolsCalled,
       modelIterations,
       agentsUsed: agentRoles,
+      provider_name: lastProviderName,
       model_name: lastModelName,
       prompt_tokens: totalPromptTokens,
       completion_tokens: totalCompletionTokens,
