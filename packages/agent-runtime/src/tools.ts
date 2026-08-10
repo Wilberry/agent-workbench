@@ -1,6 +1,4 @@
 import { agents, createServerSupabaseClient } from '@agent-workbench/sdk';
-import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Database } from '@agent-workbench/sdk';
 import type { LLMToolDefinition } from './llm/types';
 import { getRelevantMemories } from './memory';
 import fetch from 'node-fetch';
@@ -29,6 +27,7 @@ type RegistryToolRow = {
 };
 
 type ToolReference = string | Record<string, unknown>;
+type ServerSupabaseClient = ReturnType<typeof createServerSupabaseClient>;
 
 export const toolList: Tool[] = [
   {
@@ -162,7 +161,7 @@ function registryDefinition(tool: RegistryToolRow): LLMToolDefinition {
 }
 
 async function queryRegistryTools(
-  client: SupabaseClient<Database>,
+  client: ServerSupabaseClient,
   field: 'id' | 'slug' | 'name',
   value: string
 ): Promise<RegistryToolRow[]> {
@@ -178,7 +177,7 @@ async function queryRegistryTools(
 
 async function resolveRegistryReference(
   reference: ToolReference,
-  client: SupabaseClient<Database>,
+  client: ServerSupabaseClient,
   organizationId?: string | null,
   ownerUserId?: string | null
 ): Promise<RegistryToolRow | null> {
@@ -216,7 +215,7 @@ export async function resolveExecutionToolDefinitions({
   versionTools?: unknown;
   organizationId?: string | null;
   ownerUserId?: string | null;
-  client?: SupabaseClient<Database>;
+  client?: ServerSupabaseClient;
 } = {}): Promise<LLMToolDefinition[]> {
   const references = normalizeToolReferences(versionTools);
 
