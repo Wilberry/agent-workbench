@@ -54,6 +54,7 @@ export const openaiProvider: LLMProvider = {
 
     return {
       content,
+      provider_name: 'openai',
       model_name: modelName,
       prompt_tokens: usage.prompt_tokens,
       completion_tokens: usage.completion_tokens,
