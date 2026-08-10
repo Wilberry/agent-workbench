@@ -13,6 +13,13 @@ export type ProviderReliabilityOptions = {
   random?: () => number;
 };
 
+export type ProviderHttpResponse = {
+  status: number;
+  statusText: string;
+  headers: Headers;
+  body: string;
+};
+
 export class LLMProviderRequestError extends Error {
   code = 'LLM_PROVIDER_REQUEST_ERROR';
 
@@ -109,9 +116,7 @@ export function parseRetryAfterMs(headers: Headers, now = Date.now()): number | 
   if (!value) return undefined;
 
   const seconds = Number(value);
-  if (Number.isFinite(seconds) && seconds >= 0) {
-    return seconds * 1000;
-  }
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
 
   const retryAt = Date.parse(value);
   if (!Number.isFinite(retryAt)) return undefined;
@@ -150,7 +155,7 @@ export async function requestWithProviderReliability(
   url: string,
   init: RequestInit,
   options: ProviderReliabilityOptions = {}
-): Promise<Response> {
+): Promise<ProviderHttpResponse> {
   const timeoutMs = normalizePositiveNumber(options.timeoutMs, DEFAULT_PROVIDER_TIMEOUT_MS);
   const maxRetries = normalizeNonNegativeInteger(options.maxRetries, DEFAULT_PROVIDER_MAX_RETRIES);
   const baseDelayMs = normalizePositiveNumber(options.baseDelayMs, DEFAULT_PROVIDER_RETRY_BASE_MS);
@@ -169,13 +174,20 @@ export async function requestWithProviderReliability(
         ...init,
         signal: controller.signal
       });
-      // The timeout bounds only the provider request itself. Do not leave the
-      // per-attempt timer running while honoring Retry-After/backoff delays.
+      // Buffer the body while the attempt timer is still active so the timeout
+      // covers the full provider response, not only receipt of HTTP headers.
+      const responseBody = await response.text();
       clearTimeout(timeout);
 
-      if (response.ok) return response;
+      if (response.ok) {
+        return {
+          status: response.status,
+          statusText: response.statusText,
+          headers: new Headers(response.headers),
+          body: responseBody
+        };
+      }
 
-      const responseBody = await response.text();
       const retryAfterMs = parseRetryAfterMs(response.headers);
       const retryable = isRetryableProviderStatus(response.status);
       const error = new LLMProviderRequestError(
@@ -193,17 +205,10 @@ export async function requestWithProviderReliability(
 
       if (!retryable || attempt >= maxAttempts) throw error;
 
-      const delay = retryDelayMs(
-        attempt,
-        retryAfterMs,
-        baseDelayMs,
-        maxDelayMs,
-        random
+      await sleep(
+        retryDelayMs(attempt, retryAfterMs, baseDelayMs, maxDelayMs, random)
       );
-      await sleep(delay);
     } catch (error) {
-      // A network failure can happen before fetch returns, so clear the
-      // request timer before any retry delay in that path as well.
       clearTimeout(timeout);
       if (error instanceof LLMProviderRequestError) throw error;
 
@@ -212,7 +217,7 @@ export async function requestWithProviderReliability(
         ? new LLMProviderTimeoutError(provider, timeoutMs, attempt, error)
         : new LLMProviderRequestError(
             provider,
-            `${providerDisplayName(provider)} request failed before receiving a response`,
+            `${providerDisplayName(provider)} request failed before receiving a complete response`,
             {
               status: null,
               retryable: true,
@@ -223,8 +228,9 @@ export async function requestWithProviderReliability(
 
       if (attempt >= maxAttempts) throw normalizedError;
 
-      const delay = retryDelayMs(attempt, undefined, baseDelayMs, maxDelayMs, random);
-      await sleep(delay);
+      await sleep(
+        retryDelayMs(attempt, undefined, baseDelayMs, maxDelayMs, random)
+      );
     } finally {
       clearTimeout(timeout);
     }
