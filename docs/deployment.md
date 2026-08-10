@@ -9,11 +9,20 @@ Recommended architecture
 - Run background workers (agent-runtime) in a managed container service (Kubernetes, AWS ECS, or GCP Cloud Run).
 - Store secrets in a secrets manager and inject at runtime (SUPABASE_SERVICE_ROLE_KEY, OPENAI_API_KEY).
 
+Background workers
+
+- Agent execution workers consume `agent_run_jobs` through `startBackgroundWorker()` / `processAgentRunJob()`.
+- Evaluation workers consume `evaluation_run_jobs` through `startEvaluationWorker()` or `processNextEvaluationRun()`.
+- Evaluation workers are safe to restart: persisted `evaluation_run_results` act as per-example checkpoints, and stale queue leases can be reclaimed.
+- Agent and evaluation workers can run in the same container deployment or scale independently when evaluation workloads become large.
+- Apply `supabase/migrations/000019_evaluation_run_queue.sql` before enabling queued evaluation execution.
+
 Operational concerns
 
-- Scale workers horizontally based on `agent_run_jobs` queue length and average processing latency.
+- Scale agent workers based on `agent_run_jobs` queue length and average processing latency.
+- Scale evaluation workers based on `evaluation_run_jobs` queue length, dataset size, and model latency.
 - Configure health checks and readiness probes for worker processes.
-- Monitor queue DLQ and implement alerts for failure rate spikes.
+- Monitor queue dead-letter/failure states and alert on sustained retry or failure-rate spikes.
 - Configure backup and PITR for the database.
 
 CI/CD
