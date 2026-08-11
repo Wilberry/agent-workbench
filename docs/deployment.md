@@ -17,6 +17,57 @@ Background workers
 - Agent and evaluation workers can run in the same container deployment or scale independently when evaluation workloads become large.
 - Apply `supabase/migrations/20260810023711_evaluation_run_queue.sql` before enabling queued evaluation execution.
 
+Web liveness and readiness
+
+The deployed web application exposes operational endpoints that do not require authentication and must not expose secrets or backend error details.
+
+### `GET /api/health/live`
+
+Liveness confirms that the web process can serve requests. A healthy process returns HTTP 200:
+
+```json
+{
+  "status": "ok",
+  "service": "agent-workbench-web"
+}
+```
+
+Liveness deliberately does not query Supabase or model providers. It should be used by infrastructure to distinguish a running process from one that is unavailable.
+
+### `GET /api/health/ready`
+
+Readiness confirms that the deployment has the required Supabase server configuration and can complete a bounded backend query. A ready deployment returns HTTP 200:
+
+```json
+{
+  "status": "ready",
+  "checks": {
+    "configuration": "ok",
+    "database": "ok"
+  }
+}
+```
+
+An unready deployment returns HTTP 503 with only non-secret check states. Configuration failures skip the database probe; database failures do not return the underlying Supabase error.
+
+Provider credentials are intentionally not part of web readiness. Provider availability and model-specific readiness are operational concerns for agent execution and should be monitored separately from whether the web deployment can serve authenticated application traffic.
+
+Deployment smoke check
+
+After deploying a candidate, run the repository-owned smoke check against the deployment origin:
+
+```bash
+DEPLOYMENT_BASE_URL=https://your-agent-workbench.example.com pnpm smoke:deployment
+```
+
+You may also pass the origin as the first argument:
+
+```bash
+pnpm smoke:deployment -- https://your-agent-workbench.example.com
+```
+
+The smoke check requires both `/api/health/live` and `/api/health/ready` to return their expected HTTP 200 contracts. The base URL must be an origin only: credentials, paths, query strings, and fragments are rejected.
+
 Operational concerns
 
 - Scale agent workers based on `agent_run_jobs` queue length and average processing latency.
@@ -32,6 +83,7 @@ CI/CD
 - Run `pnpm test:integration`, `pnpm test:security`, and
   `pnpm test:reliability` in separate jobs configured with their required
   external credentials. `pnpm test:all` is not hermetic.
+- Run `pnpm smoke:deployment` against a deployed candidate before promotion.
 - Deploy tags/releases via GitHub Actions and create release notes for each tag.
 
 Security
