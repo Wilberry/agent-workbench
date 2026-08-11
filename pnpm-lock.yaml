@@ -103,6 +103,12 @@ importers:
         specifier: ^3.3.1
         version: 3.3.2
 
+  packages/cli:
+    dependencies:
+      '@agent-workbench/sdk':
+        specifier: workspace:*
+        version: link:../sdk
+
   packages/evals: {}
 
   packages/mcp: {}
