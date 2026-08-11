@@ -58,11 +58,14 @@ function normalizeBaseUrl(value: string): string {
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     throw new Error('Agent Workbench baseUrl must use http or https');
   }
-  if (parsed.search || parsed.hash) {
-    throw new Error('Agent Workbench baseUrl must not include a query string or fragment');
+  if (parsed.username || parsed.password) {
+    throw new Error('Agent Workbench baseUrl must not include URL credentials');
+  }
+  if (parsed.pathname !== '/' || parsed.search || parsed.hash) {
+    throw new Error('Agent Workbench baseUrl must be an origin without a path, query, or fragment');
   }
 
-  return baseUrl.replace(/\/+$/, '');
+  return parsed.origin;
 }
 
 function normalizeApiKey(value: string): string {
@@ -95,7 +98,9 @@ function errorFromResponse(response: Response, payload: unknown): AgentWorkbench
 export function createAgentWorkbenchClient(options: AgentWorkbenchClientOptions) {
   const baseUrl = normalizeBaseUrl(options.baseUrl);
   const apiKey = normalizeApiKey(options.apiKey);
-  const fetcher = options.fetch ?? globalThis.fetch;
+  const fetcher =
+    options.fetch ??
+    (typeof globalThis.fetch === 'function' ? globalThis.fetch.bind(globalThis) : undefined);
 
   if (!fetcher) {
     throw new Error('A fetch implementation is required to use the Agent Workbench public API client');
