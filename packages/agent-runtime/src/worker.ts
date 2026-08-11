@@ -279,7 +279,7 @@ export async function processAgentRunJob(job: AgentRunQueueJob): Promise<void> {
         existingRun.execution_trace,
         stepIndex,
         role
-      );
+      ) ?? undefined;
 
       for (let retryAttempt = 0; retryAttempt <= MAX_RETRIES; retryAttempt += 1) {
         try {

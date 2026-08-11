@@ -3,9 +3,10 @@ import { headers, cookies } from 'next/headers';
 import { createRouteHandlerSupabaseClient } from '@supabase/auth-helpers-nextjs';
 import { createServerSupabaseClient, evaluations } from '@agent-workbench/sdk';
 
+type ServerSupabaseClient = ReturnType<typeof createServerSupabaseClient>;
+
 async function hasOrganizationAccess(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: any,
+  supabase: ServerSupabaseClient,
   userId: string,
   organizationId: string | null | undefined
 ) {
@@ -21,8 +22,7 @@ async function hasOrganizationAccess(
 }
 
 async function authorizeEvaluationTarget(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: any,
+  supabase: ServerSupabaseClient,
   userId: string,
   datasetId: string,
   agentVersionId: string,

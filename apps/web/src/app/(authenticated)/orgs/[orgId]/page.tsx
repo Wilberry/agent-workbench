@@ -3,7 +3,7 @@ import { cookies, headers } from 'next/headers';
 import type { Database } from '@/types/database';
 import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-nextjs';
 import { agentRuns, orgs } from '@agent-workbench/sdk';
-import type { OrgBilling } from '@agent-workbench/sdk';
+import type { AgentRunStatus, OrgBilling } from '@agent-workbench/sdk';
 import OrgTraceAnalytics from '@/components/OrgTraceAnalytics';
 
 export default async function OrgOverviewPage({ params }: { params: { orgId: string } }) {
@@ -34,8 +34,9 @@ export default async function OrgOverviewPage({ params }: { params: { orgId: str
       pending: 0,
       running: 0,
       completed: 0,
-      failed: 0
-    } as Record<'pending' | 'running' | 'completed' | 'failed', number>
+      failed: 0,
+      cancelled: 0
+    } as Record<AgentRunStatus, number>
   );
 
   const recentRuns = orgRuns.slice(0, 4);
@@ -109,7 +110,7 @@ export default async function OrgOverviewPage({ params }: { params: { orgId: str
             </div>
 
             <div className="mt-6 grid gap-4 sm:grid-cols-2">
-              {(['pending', 'running', 'completed', 'failed'] as const).map((status) => (
+              {(['pending', 'running', 'completed', 'failed', 'cancelled'] as const).map((status) => (
                 <div key={status} className="rounded-3xl bg-slate-950 p-4 text-center">
                   <div className="text-sm text-slate-400">{status.charAt(0).toUpperCase() + status.slice(1)}</div>
                   <div className="mt-2 text-2xl font-semibold text-white">{statusCounts[status]}</div>
@@ -195,4 +196,3 @@ export default async function OrgOverviewPage({ params }: { params: { orgId: str
     </main>
   );
 }
-

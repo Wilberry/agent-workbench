@@ -3,6 +3,7 @@ import Link from 'next/link';
 import type { Database } from '@/types/database';
 import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-nextjs';
 import { agentRuns } from '@agent-workbench/sdk';
+import type { AgentRunStatus } from '@agent-workbench/sdk';
 
 type AgentRun = {
   id: string;
@@ -17,7 +18,7 @@ type AgentRun = {
   total_tokens: number;
   estimated_cost: number;
   latency_ms: number;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: AgentRunStatus;
   created_at: string;
 };
 
@@ -51,8 +52,9 @@ export default async function TraceExplorerPage({
     pending: 'bg-yellow-900 text-yellow-100',
     running: 'bg-blue-900 text-blue-100',
     completed: 'bg-emerald-900 text-emerald-100',
-    failed: 'bg-red-900 text-red-100'
-  };
+    failed: 'bg-red-900 text-red-100',
+    cancelled: 'bg-slate-700 text-slate-200'
+  } satisfies Record<AgentRunStatus, string>;
 
   const tools = Array.from(
     new Set(
@@ -136,6 +138,7 @@ export default async function TraceExplorerPage({
                 <option value="running">Running</option>
                 <option value="completed">Completed</option>
                 <option value="failed">Failed</option>
+                <option value="cancelled">Cancelled</option>
               </select>
             </label>
 

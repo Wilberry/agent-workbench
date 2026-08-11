@@ -233,9 +233,9 @@ export async function resolveExecutionToolDefinitions({
     return getBuiltInToolDefinitions();
   }
 
-  const supabase = client ?? createServerSupabaseClient();
   const builtIns = new Map(toolList.map((tool) => [tool.name, tool]));
   const definitions = new Map<string, LLMToolDefinition>();
+  let supabase = client;
 
   for (const reference of references) {
     const requestedName = referenceValue(reference, 'name') ?? referenceValue(reference, 'slug');
@@ -243,6 +243,10 @@ export async function resolveExecutionToolDefinitions({
     if (builtIn) {
       definitions.set(builtIn.name, builtInDefinition(builtIn));
       continue;
+    }
+
+    if (!supabase) {
+      supabase = createServerSupabaseClient();
     }
 
     const registryTool = await resolveRegistryReference(
