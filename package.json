@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.4.0",
   "packageManager": "pnpm@10.34.2",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
@@ -19,7 +22,8 @@
     "test:reliability:ci": "vitest run --config vitest.reliability.config.ts --reporter json > test-results.json; test_exit=$?; node scripts/ci/report-vitest.js test-results.json; report_exit=$?; test $test_exit -eq 0 && test $report_exit -eq 0",
     "test:playwright": "playwright test",
     "test:performance": "k6 run tests/performance/load_test.js",
-    "test:e2e": "pnpm test:playwright"
+    "test:e2e": "pnpm test:playwright",
+    "smoke:deployment": "node scripts/ci/smoke-deployment.mjs"
   },
   "workspaces": [
     "packages/*",

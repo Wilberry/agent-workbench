@@ -1,5 +1,5 @@
 import type { NextRequest } from 'next/server';
-import { createServerSupabaseClient } from '@agent-workbench/sdk/src/supabaseClient';
+import { createServerSupabaseClient } from '@agent-workbench/sdk';
 
 export async function GET(_request: NextRequest, { params }: { params: { conversationId: string } }) {
   const { conversationId } = params;

@@ -8,6 +8,7 @@ Recommended architecture
 - Use a managed Supabase project for Postgres, Auth, Realtime, and Edge Functions.
 - Run background workers (agent-runtime) in a managed container service (Kubernetes, AWS ECS, or GCP Cloud Run).
 - Store secrets in a secrets manager and inject at runtime (SUPABASE_SERVICE_ROLE_KEY, OPENAI_API_KEY).
+- Use Node.js 22 for the web deployment. The repository pins Node 22 in the Vercel project root (`apps/web/package.json`) so hosted builds match the validated local runtime contract.
 
 Background workers
 
@@ -16,6 +17,71 @@ Background workers
 - Evaluation workers are safe to restart: persisted `evaluation_run_results` act as per-example checkpoints, and stale queue leases can be reclaimed.
 - Agent and evaluation workers can run in the same container deployment or scale independently when evaluation workloads become large.
 - Apply `supabase/migrations/20260810023711_evaluation_run_queue.sql` before enabling queued evaluation execution.
+
+Web liveness and readiness
+
+The deployed web application exposes operational endpoints that do not require application authentication and must not expose secrets or backend error details. Hosting-platform deployment protection may still sit in front of these routes; preview smoke automation must authenticate through that perimeter before the request can reach the application.
+
+### `GET /api/health/live`
+
+Liveness confirms that the web process can serve requests. A healthy process returns HTTP 200:
+
+```json
+{
+  "status": "ok",
+  "service": "agent-workbench-web"
+}
+```
+
+Liveness deliberately does not query Supabase or model providers. It should be used by infrastructure to distinguish a running process from one that is unavailable.
+
+### `GET /api/health/ready`
+
+Readiness confirms that the deployment has the required Supabase server configuration and can complete a bounded backend query. A ready deployment returns HTTP 200:
+
+```json
+{
+  "status": "ready",
+  "checks": {
+    "configuration": "ok",
+    "database": "ok"
+  }
+}
+```
+
+An unready deployment returns HTTP 503 with only non-secret check states. Configuration failures skip the database probe; database failures do not return the underlying Supabase error.
+
+Provider credentials are intentionally not part of web readiness. Provider availability and model-specific readiness are operational concerns for agent execution and should be monitored separately from whether the web deployment can serve authenticated application traffic.
+
+Deployment smoke check
+
+After deploying a candidate, run the repository-owned smoke check against the deployment origin:
+
+```bash
+DEPLOYMENT_BASE_URL=https://your-agent-workbench.example.com pnpm smoke:deployment
+```
+
+You may also pass the origin as the first argument:
+
+```bash
+pnpm smoke:deployment -- https://your-agent-workbench.example.com
+```
+
+The smoke check requires both `/api/health/live` and `/api/health/ready` to return their expected HTTP 200 contracts. The base URL must be an origin only: credentials, paths, query strings, and fragments are rejected.
+
+Vercel protected previews
+
+If Vercel Deployment Protection is enabled for previews, configure Protection Bypass for Automation and provide the secret through the environment:
+
+```bash
+VERCEL_AUTOMATION_BYPASS_SECRET=... \
+DEPLOYMENT_BASE_URL=https://your-preview.example.vercel.app \
+pnpm smoke:deployment
+```
+
+The secret is sent only through the `x-vercel-protection-bypass` header. Do not place it in source control, deployment URLs, logs, or normal command output.
+
+A redirect to Vercel SSO or an absence of application runtime logs for `/api/health/*` means the request was stopped by the hosting perimeter before Agent Workbench readiness code executed.
 
 Operational concerns
 
@@ -32,6 +98,7 @@ CI/CD
 - Run `pnpm test:integration`, `pnpm test:security`, and
   `pnpm test:reliability` in separate jobs configured with their required
   external credentials. `pnpm test:all` is not hermetic.
+- Run `pnpm smoke:deployment` against a deployed candidate before promotion.
 - Deploy tags/releases via GitHub Actions and create release notes for each tag.
 
 Security
