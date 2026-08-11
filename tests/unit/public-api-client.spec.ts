@@ -173,6 +173,24 @@ describe('Agent Workbench public API client', () => {
     })).toThrow('baseUrl must be an absolute URL');
 
     expect(() => createAgentWorkbenchClient({
+      baseUrl: 'https://user:password@workbench.example.com',
+      apiKey: 'awb_live_test',
+      fetch: fetchMock
+    })).toThrow('baseUrl must not include URL credentials');
+
+    expect(() => createAgentWorkbenchClient({
+      baseUrl: 'https://workbench.example.com/some/path',
+      apiKey: 'awb_live_test',
+      fetch: fetchMock
+    })).toThrow('baseUrl must be an origin without a path, query, or fragment');
+
+    expect(() => createAgentWorkbenchClient({
+      baseUrl: 'https://workbench.example.com?redirect=other',
+      apiKey: 'awb_live_test',
+      fetch: fetchMock
+    })).toThrow('baseUrl must be an origin without a path, query, or fragment');
+
+    expect(() => createAgentWorkbenchClient({
       baseUrl: 'https://workbench.example.com',
       apiKey: '   ',
       fetch: fetchMock
