@@ -1,1 +1,1 @@
-export * from './publicApiClient';
+export * from './publicApiClient.js';

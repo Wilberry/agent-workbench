@@ -1,0 +1,24 @@
+{
+  "name": "@agent-workbench/cli",
+  "version": "0.1.0",
+  "description": "Command-line interface for the Agent Workbench public API",
+  "type": "module",
+  "bin": {
+    "agent-workbench": "bin/agent-workbench.mjs",
+    "awb": "bin/agent-workbench.mjs"
+  },
+  "files": [
+    "bin",
+    "src"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node --check src/cli.mjs && node --check bin/agent-workbench.mjs && node bin/agent-workbench.mjs --help",
+    "lint": "node --check src/cli.mjs && node --check bin/agent-workbench.mjs"
+  },
+  "dependencies": {
+    "@agent-workbench/sdk": "workspace:*"
+  }
+}
