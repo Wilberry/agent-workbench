@@ -8,7 +8,7 @@ Agent Workbench is an open-source developer platform for versioned agent executi
 
 ## Current status
 
-Agent Workbench is a production-oriented pre-release platform. The backend architecture and v0.7 model-platform foundations are substantially implemented, while later developer-platform and workflow-runtime capabilities remain planned.
+Agent Workbench is a production-oriented pre-release platform. The backend architecture and v0.8 Agent Tooling foundations are substantially implemented, while later developer-platform capabilities remain planned.
 
 ### Implemented
 
@@ -25,6 +25,8 @@ Agent Workbench is a production-oriented pre-release platform. The backend archi
 - Background agent-run queue
 - Retry, stale-job recovery, and dead-letter behavior
 - Run traces, replay foundations, token usage, latency, and cost telemetry
+- Explicit interactive and durable agent-run cancellation semantics
+- Durable continuation and completion checkpoints for workflow recovery without replaying completed tool side effects
 - Evaluation datasets, examples, evaluation runs, and persisted results
 - Durable queued evaluation and experiment execution with progress, retry, recovery, and cooperative cancellation
 - Version-to-version experiments
@@ -44,12 +46,11 @@ Agent Workbench is a production-oriented pre-release platform. The backend archi
 - Multi-agent workflow failures may fall back to the single-agent runtime, except after tool side effects where fallback/replay is intentionally disabled
 - Evaluation cancellation is cooperative between examples; an already-started provider request may finish before the worker observes cancellation
 - Native tool/function calling is the primary runtime path; the legacy structured-text `TOOL_CALL` protocol remains temporarily as a compatibility fallback
-- `runAgentEventStream()` exposes live SSE execution events; client disconnect currently stops delivery but does not yet cancel the underlying agent execution
+- Agent-run cancellation is actively propagated in-process and cooperatively observed across durable workers; an already-running external tool may finish before cross-process cancellation is observed
 
 ### Planned
 
 - Broader provider coverage after the provider-selection and observability UX is stable
-- Stronger workflow-runtime semantics, including explicit execution cancellation/resume behavior
 - Public API authentication and API keys
 - CLI and polished external SDK workflows
 - MCP expansion
@@ -83,7 +84,7 @@ The current runtime supports:
 - provider-aware pricing and telemetry
 - buffered and provider-native streaming completion paths
 - normalized `response_start`, text-delta, tool-call, usage, and `response_end` events
-- live SSE agent execution through `runAgentEventStream()`
+- live SSE agent execution through `runAgentEventStream()` with disconnect-driven cancellation
 - bounded provider retries, Retry-After handling, and request timeouts
 - streaming retry only before the first emitted byte
 - local non-billable provider readiness reporting
@@ -95,6 +96,7 @@ The current runtime supports:
 - server-owned agent/conversation context injection for built-in tools
 - multi-agent workflow routing with role-tagged streaming events
 - single-agent fallback when replay is side-effect safe
+- cooperative durable cancellation and resumable workflow checkpoints
 - persisted trace events
 - token and latency telemetry
 - estimated-cost telemetry when provider/model pricing is known
@@ -114,7 +116,7 @@ The evaluation system currently supports:
 - cooperative cancellation for queued/running evaluations and experiments
 - latency, token, trace, and cost aggregation
 
-With v0.6 Async Evaluations and v0.7 Model Platform complete, v0.8 Agent Tooling is in progress. Provider-native tool/function calling and richer streaming are implemented; stronger workflow-runtime semantics remain next.
+With v0.6 Async Evaluations, v0.7 Model Platform, and v0.8 Agent Tooling complete, v0.9 Developer Platform is next.
 
 ## Testing and validation
 
@@ -205,7 +207,7 @@ The original phase-based roadmap has been retired because the repository has out
 
 - [x] Provider-native tool/function calling
 - [x] Richer streaming
-- [ ] Stronger workflow-runtime semantics
+- [x] Stronger workflow-runtime semantics
 
 ### v0.9 — Developer Platform
 
