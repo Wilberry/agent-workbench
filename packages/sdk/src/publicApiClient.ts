@@ -98,13 +98,14 @@ function errorFromResponse(response: Response, payload: unknown): AgentWorkbench
 export function createAgentWorkbenchClient(options: AgentWorkbenchClientOptions) {
   const baseUrl = normalizeBaseUrl(options.baseUrl);
   const apiKey = normalizeApiKey(options.apiKey);
-  const fetcher =
+  const fetcherCandidate =
     options.fetch ??
     (typeof globalThis.fetch === 'function' ? globalThis.fetch.bind(globalThis) : undefined);
 
-  if (!fetcher) {
+  if (!fetcherCandidate) {
     throw new Error('A fetch implementation is required to use the Agent Workbench public API client');
   }
+  const fetcher: typeof fetch = fetcherCandidate;
 
   async function request<T>(path: string, requestOptions?: PublicApiRequestOptions): Promise<T> {
     let response: Response;
