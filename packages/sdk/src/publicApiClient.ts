@@ -1,11 +1,4 @@
-export type AgentWorkbenchPublicApiErrorCode =
-  | 'missing_api_key'
-  | 'invalid_api_key'
-  | 'insufficient_scope'
-  | 'internal_error'
-  | 'invalid_response'
-  | 'network_error'
-  | (string & {});
+export type AgentWorkbenchPublicApiErrorCode = string;
 
 export type PublicApiAgent = {
   id: string;
@@ -119,7 +112,8 @@ export function createAgentWorkbenchClient(options: AgentWorkbenchClientOptions)
         },
         signal: requestOptions?.signal
       });
-    } catch {
+    } catch (error) {
+      if (requestOptions?.signal?.aborted) throw error;
       throw new AgentWorkbenchApiError(
         'Unable to reach the Agent Workbench API',
         0,
