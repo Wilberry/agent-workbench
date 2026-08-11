@@ -44,13 +44,50 @@ describe('deployment health smoke check', () => {
     );
   });
 
+  it('sends the Vercel automation bypass header when configured', async () => {
+    const fetchImpl = vi.fn(async (url: string | URL | Request) => {
+      if (String(url).endsWith('/api/health/live')) {
+        return jsonResponse({ status: 'ok' });
+      }
+      return jsonResponse({
+        status: 'ready',
+        checks: { configuration: 'ok', database: 'ok' }
+      });
+    });
+
+    await smokeDeployment({
+      baseUrl: 'https://workbench.example.com',
+      fetchImpl,
+      protectionBypassSecret: '  bypass-secret  '
+    });
+
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      1,
+      'https://workbench.example.com/api/health/live',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          'x-vercel-protection-bypass': 'bypass-secret'
+        })
+      })
+    );
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      'https://workbench.example.com/api/health/ready',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          'x-vercel-protection-bypass': 'bypass-secret'
+        })
+      })
+    );
+  });
+
   it('fails when liveness is unavailable', async () => {
     const fetchImpl = vi.fn(async () => jsonResponse({ status: 'down' }, 503));
 
     await expect(smokeDeployment({
       baseUrl: 'https://workbench.example.com',
       fetchImpl
-    })).rejects.toThrow('Health check failed with status 503');
+    })).rejects.toThrow('Health check failed with status 503: /api/health/live');
   });
 
   it('fails when readiness does not report ready', async () => {
@@ -65,6 +102,21 @@ describe('deployment health smoke check', () => {
       baseUrl: 'https://workbench.example.com',
       fetchImpl
     })).rejects.toThrow('Readiness response is invalid');
+  });
+
+  it('identifies the timed-out health endpoint', async () => {
+    const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) =>
+      await new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => {
+          reject(new DOMException('The operation was aborted', 'AbortError'));
+        }, { once: true });
+      }));
+
+    await expect(smokeDeployment({
+      baseUrl: 'https://workbench.example.com',
+      fetchImpl,
+      timeoutMs: 1
+    })).rejects.toThrow('Health check timed out after 1ms: /api/health/live');
   });
 
   it('rejects ambiguous or credential-bearing deployment URLs', async () => {
