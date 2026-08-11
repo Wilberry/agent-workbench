@@ -8,7 +8,7 @@ Agent Workbench is an open-source developer platform for versioned agent executi
 
 ## Current status
 
-Agent Workbench is a production-oriented pre-release platform. The backend architecture and v0.8 Agent Tooling foundations are substantially implemented, and v0.9 Developer Platform work has started with public API authentication and organization-scoped API keys.
+Agent Workbench is a production-oriented pre-release platform. The backend architecture through v0.9 Developer Platform is substantially implemented, and v1.0 Production Release hardening is next.
 
 ### Implemented
 
@@ -36,6 +36,8 @@ Agent Workbench is a production-oriented pre-release platform. The backend archi
 - Realtime run and execution-step updates
 - Organization-scoped public API keys with hashed-at-rest credentials, scopes, expiry, and revocation
 - Authenticated public API access for organization agent discovery
+- Isolated external SDK client for API-key-authenticated public API workflows
+- Node 22 CLI with `awb agents list`, human-readable and JSON output, and environment-based secret handling
 - Hermetic contributor validation plus separate integration, security, reliability, and E2E suites
 
 ### Beta / stabilization
@@ -49,12 +51,12 @@ Agent Workbench is a production-oriented pre-release platform. The backend archi
 - Evaluation cancellation is cooperative between examples; an already-started provider request may finish before the worker observes cancellation
 - Native tool/function calling is the primary runtime path; the legacy structured-text `TOOL_CALL` protocol remains temporarily as a compatibility fallback
 - Agent-run cancellation is actively propagated in-process and cooperatively observed across durable workers; an already-running external tool may finish before cross-process cancellation is observed
-- The initial public API surface is read-only and limited to organization agent discovery while additional versioned endpoints are stabilized
+- The initial public API and CLI surfaces are read-only and limited to organization agent discovery while additional versioned endpoints are stabilized
 
 ### Planned
 
 - Broader provider coverage after the provider-selection and observability UX is stable
-- CLI and polished external SDK workflows
+- v1.0 production deployment, release/security evidence, observability, and public-contract hardening
 - MCP expansion
 - Knowledge ingestion and RAG workflows
 
@@ -66,6 +68,7 @@ apps/
 
 packages/
 ├── agent-runtime/
+├── cli/
 ├── sdk/
 ├── mcp/      # reserved/planned workspace
 ├── evals/    # reserved/planned workspace; current eval implementation lives in sdk
@@ -118,7 +121,7 @@ The evaluation system currently supports:
 - cooperative cancellation for queued/running evaluations and experiments
 - latency, token, trace, and cost aggregation
 
-With v0.6 Async Evaluations, v0.7 Model Platform, and v0.8 Agent Tooling complete, v0.9 Developer Platform is in progress. Public API authentication and API-key foundations are implemented; CLI and external SDK workflows remain next.
+With v0.6 Async Evaluations, v0.7 Model Platform, v0.8 Agent Tooling, and the v0.9 Developer Platform implementation complete, v1.0 Production Release hardening is next.
 
 ## Testing and validation
 
@@ -215,8 +218,8 @@ The original phase-based roadmap has been retired because the repository has out
 
 - [x] Public API authentication
 - [x] API keys
-- [ ] CLI
-- [ ] Polished external SDK workflows
+- [x] CLI
+- [x] Polished external SDK workflows
 
 ### v1.0 — Production Release
 
