@@ -19,7 +19,7 @@ Background workers
 
 Web liveness and readiness
 
-The deployed web application exposes operational endpoints that do not require authentication and must not expose secrets or backend error details.
+The deployed web application exposes operational endpoints that do not require application authentication and must not expose secrets or backend error details.
 
 ### `GET /api/health/live`
 
@@ -68,6 +68,20 @@ pnpm smoke:deployment -- https://your-agent-workbench.example.com
 
 The smoke check requires both `/api/health/live` and `/api/health/ready` to return their expected HTTP 200 contracts. The base URL must be an origin only: credentials, paths, query strings, and fragments are rejected.
 
+### Protected Vercel previews
+
+Vercel preview and deployment URLs may be protected by Deployment Protection. For automated health checks against a protected deployment, configure Vercel Protection Bypass for Automation and expose the generated secret to the smoke process as `VERCEL_AUTOMATION_BYPASS_SECRET`:
+
+```bash
+DEPLOYMENT_BASE_URL=https://your-preview.vercel.app \
+VERCEL_AUTOMATION_BYPASS_SECRET=your-bypass-secret \
+pnpm smoke:deployment
+```
+
+When present, the smoke client sends the secret only in the `x-vercel-protection-bypass` request header. It does not put the secret in the deployment URL or normal output.
+
+If a smoke request times out, the failure names the affected health path so operators can distinguish a liveness timeout from a readiness/backend timeout.
+
 Operational concerns
 
 - Scale agent workers based on `agent_run_jobs` queue length and average processing latency.
@@ -84,6 +98,7 @@ CI/CD
   `pnpm test:reliability` in separate jobs configured with their required
   external credentials. `pnpm test:all` is not hermetic.
 - Run `pnpm smoke:deployment` against a deployed candidate before promotion.
+- For protected Vercel previews, provide `VERCEL_AUTOMATION_BYPASS_SECRET` to the smoke process rather than disabling deployment protection globally.
 - Deploy tags/releases via GitHub Actions and create release notes for each tag.
 
 Security
