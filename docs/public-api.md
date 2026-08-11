@@ -28,6 +28,44 @@ Authorization: Bearer awb_live_<secret>
 
 Do not send API keys in URLs or query parameters, and do not log authorization headers.
 
+## SDK client
+
+The SDK exposes an isolated public entrypoint that handles bearer authentication, response parsing, and stable API error objects without loading the Supabase-backed internal SDK surface:
+
+```ts
+import {
+  AgentWorkbenchApiError,
+  createAgentWorkbenchClient
+} from '@agent-workbench/sdk/public';
+
+const workbench = createAgentWorkbenchClient({
+  baseUrl: 'https://your-agent-workbench.example.com',
+  apiKey: process.env.AGENT_WORKBENCH_API_KEY!
+});
+
+try {
+  const agents = await workbench.agents.list();
+  console.log(agents);
+} catch (error) {
+  if (error instanceof AgentWorkbenchApiError) {
+    console.error(error.status, error.code, error.message);
+  }
+}
+```
+
+`baseUrl` must be the deployment origin only. A trailing slash is normalized, while URL credentials, paths, query strings, and fragments are rejected. This keeps the client pinned to the deployment's versioned API paths instead of composing requests from ambiguous base URLs.
+
+`agents.list()` accepts an optional `AbortSignal`:
+
+```ts
+const controller = new AbortController();
+const agents = await workbench.agents.list({ signal: controller.signal });
+```
+
+A custom `fetch` implementation may be injected through `createAgentWorkbenchClient()` for testing or runtimes without a global Fetch API.
+
+API keys are secrets. Use this client from a trusted server, CLI, worker, or other private runtime. Do not embed `awb_live_` credentials in public browser bundles.
+
 ## Initial endpoint
 
 ### `GET /api/v1/agents`
@@ -65,6 +103,8 @@ Authentication errors use a stable envelope:
 ```
 
 Current error codes are `missing_api_key`, `invalid_api_key`, `insufficient_scope`, and `internal_error`.
+
+The SDK preserves server error codes and HTTP status values through `AgentWorkbenchApiError`. Non-JSON HTTP failures use a deterministic `http_<status>` fallback; malformed successful responses use `invalid_response`; transport failures use `network_error`. Explicitly aborted requests preserve the runtime's original abort error rather than being converted into a network failure.
 
 ## Key management
 

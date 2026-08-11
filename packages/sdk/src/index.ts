@@ -7,6 +7,7 @@ export * from './realtime';
 export * from './tools';
 export * from './marketplace';
 export * from './apiKeys';
+export * from './publicApiClient';
 export * from './types';
 export * from './supabaseClient';
 export * from './evaluations';
