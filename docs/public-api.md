@@ -53,7 +53,7 @@ try {
 }
 ```
 
-`baseUrl` is the origin of the Agent Workbench deployment. Trailing slashes are normalized. Query strings and fragments are rejected so request paths cannot be accidentally redirected outside the versioned API surface.
+`baseUrl` must be the deployment origin only. A trailing slash is normalized, while URL credentials, paths, query strings, and fragments are rejected. This keeps the client pinned to the deployment's versioned API paths instead of composing requests from ambiguous base URLs.
 
 `agents.list()` accepts an optional `AbortSignal`:
 
