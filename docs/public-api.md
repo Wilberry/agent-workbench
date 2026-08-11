@@ -30,13 +30,13 @@ Do not send API keys in URLs or query parameters, and do not log authorization h
 
 ## SDK client
 
-The SDK exposes a public API client that handles bearer authentication, response parsing, and stable API error objects without requiring a Supabase client:
+The SDK exposes an isolated public entrypoint that handles bearer authentication, response parsing, and stable API error objects without loading the Supabase-backed internal SDK surface:
 
 ```ts
 import {
   AgentWorkbenchApiError,
   createAgentWorkbenchClient
-} from '@agent-workbench/sdk';
+} from '@agent-workbench/sdk/public';
 
 const workbench = createAgentWorkbenchClient({
   baseUrl: 'https://your-agent-workbench.example.com',
