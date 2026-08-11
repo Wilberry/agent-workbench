@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
+import * as publicSdk from '@agent-workbench/sdk/public';
 import {
   AgentWorkbenchApiError,
   createAgentWorkbenchClient
-} from '@agent-workbench/sdk';
+} from '@agent-workbench/sdk/public';
 
 const agent = {
   id: 'agent-1',
@@ -16,6 +17,12 @@ const agent = {
 };
 
 describe('Agent Workbench public API client', () => {
+  it('keeps the public entrypoint isolated from Supabase-backed SDK helpers', () => {
+    expect(publicSdk).toHaveProperty('createAgentWorkbenchClient');
+    expect(publicSdk).not.toHaveProperty('createServerSupabaseClient');
+    expect(publicSdk).not.toHaveProperty('apiKeys');
+  });
+
   it('lists agents with bearer authentication and normalized base URL', async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ data: [agent] }), {
       status: 200,
@@ -56,6 +63,22 @@ describe('Agent Workbench public API client', () => {
       'https://workbench.example.com/api/v1/agents',
       expect.objectContaining({ signal: controller.signal })
     );
+  });
+
+  it('preserves explicit request abort errors', async () => {
+    const controller = new AbortController();
+    const abortError = new DOMException('The operation was aborted', 'AbortError');
+    const fetchMock = vi.fn(async () => {
+      throw abortError;
+    });
+    const client = createAgentWorkbenchClient({
+      baseUrl: 'https://workbench.example.com',
+      apiKey: 'awb_live_test',
+      fetch: fetchMock
+    });
+    controller.abort();
+
+    await expect(client.agents.list({ signal: controller.signal })).rejects.toBe(abortError);
   });
 
   it('turns stable API error envelopes into AgentWorkbenchApiError', async () => {
