@@ -49,7 +49,11 @@ describe('LLM runtime stabilization', () => {
     process.env.OPENAI_API_KEY = 'test-openai-key';
 
     await expect(
-      chatCompletion({ ...request, provider: 'anthropic' })
+      chatCompletion({
+        provider: 'provider-that-does-not-exist',
+        model: 'any-model',
+        messages: [{ role: 'user', content: 'hello' }]
+      })
     ).rejects.toBeInstanceOf(UnsupportedLLMProviderError);
   });
 

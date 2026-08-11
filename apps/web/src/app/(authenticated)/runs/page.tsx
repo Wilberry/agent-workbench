@@ -3,6 +3,7 @@ import Link from 'next/link';
 import type { Database } from '@/types/database';
 import { createServerComponentSupabaseClient } from '@supabase/auth-helpers-nextjs';
 import { agentRuns } from '@agent-workbench/sdk';
+import type { AgentRunStatus } from '@agent-workbench/sdk';
 
 type AgentRun = {
   id: string;
@@ -10,7 +11,7 @@ type AgentRun = {
   conversation_id: string;
   workflow: string[];
   current_step: number;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: AgentRunStatus;
   created_at: string;
   error_message?: string | null;
 };
@@ -31,8 +32,9 @@ export default async function RunsPage() {
     pending: 'bg-yellow-900 text-yellow-100',
     running: 'bg-blue-900 text-blue-100',
     completed: 'bg-emerald-900 text-emerald-100',
-    failed: 'bg-red-900 text-red-100'
-  };
+    failed: 'bg-red-900 text-red-100',
+    cancelled: 'bg-slate-700 text-slate-200'
+  } satisfies Record<AgentRunStatus, string>;
 
   const runCounts = runs.reduce(
     (acc, run) => {
@@ -41,9 +43,10 @@ export default async function RunsPage() {
       if (run.status === 'running') acc.running += 1;
       if (run.status === 'pending') acc.pending += 1;
       if (run.status === 'failed') acc.failed += 1;
+      if (run.status === 'cancelled') acc.cancelled += 1;
       return acc;
     },
-    { total: 0, completed: 0, running: 0, pending: 0, failed: 0 }
+    { total: 0, completed: 0, running: 0, pending: 0, failed: 0, cancelled: 0 }
   );
 
   return (
@@ -52,7 +55,7 @@ export default async function RunsPage() {
         <div className="rounded-3xl border border-slate-700 bg-slate-900 p-6">
           <h1 className="text-3xl font-semibold">Agent Runs</h1>
           <p className="mt-2 text-slate-400">Track all workflow executions and their status.</p>
-          <div className="mt-6 grid gap-4 sm:grid-cols-5">
+          <div className="mt-6 grid gap-4 sm:grid-cols-6">
             <div className="rounded-3xl border border-slate-700 bg-slate-950 p-4 text-sm">
               <div className="font-semibold text-slate-300">Total runs</div>
               <div className="mt-2 text-3xl font-semibold text-white">{runCounts.total}</div>
@@ -72,6 +75,10 @@ export default async function RunsPage() {
             <div className="rounded-3xl border border-slate-700 bg-slate-950 p-4 text-sm">
               <div className="font-semibold text-slate-300">Failed</div>
               <div className="mt-2 text-3xl font-semibold text-red-200">{runCounts.failed}</div>
+            </div>
+            <div className="rounded-3xl border border-slate-700 bg-slate-950 p-4 text-sm">
+              <div className="font-semibold text-slate-300">Cancelled</div>
+              <div className="mt-2 text-3xl font-semibold text-slate-200">{runCounts.cancelled}</div>
             </div>
           </div>
         </div>

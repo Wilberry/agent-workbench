@@ -147,7 +147,7 @@ describe('OpenAI native tool contract', () => {
         }
       }],
       usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
-    }), { status: 200 }))));
+    }), { status: 200 })));
 
     await expect(chatCompletion({
       provider: 'openai',

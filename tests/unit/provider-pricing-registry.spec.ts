@@ -20,7 +20,6 @@ describe('provider pricing registry', () => {
     expect(getPricingCatalogVersion()).toBe(PRICING_CATALOG_VERSION);
     expect(entries.length).toBeGreaterThan(0);
     expect(entries.every((entry) => entry.catalogVersion === PRICING_CATALOG_VERSION)).toBe(true);
-    expect(entries.every((entry) => entry.provider === 'openai')).toBe(true);
   });
 
   it('keeps legacy OpenAI-default lookups compatible', () => {
