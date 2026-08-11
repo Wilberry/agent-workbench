@@ -31,6 +31,7 @@ export type LLMRequest = {
   max_retries?: number;
   tools?: LLMToolDefinition[];
   tool_choice?: LLMToolChoice;
+  signal?: AbortSignal;
 };
 
 export type LLMUsage = {

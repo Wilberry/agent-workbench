@@ -149,7 +149,8 @@ export const openaiProvider: LLMProvider = {
       requestInit(apiKey, request),
       {
         timeoutMs: request.timeout_ms,
-        maxRetries: request.max_retries
+        maxRetries: request.max_retries,
+        signal: request.signal
       }
     );
 
@@ -287,7 +288,8 @@ export const openaiProvider: LLMProvider = {
       requestInit(apiKey, request, true),
       {
         timeoutMs: request.timeout_ms,
-        maxRetries: request.max_retries
+        maxRetries: request.max_retries,
+        signal: request.signal
       }
     )) {
       for (const payloadText of parser.push(chunk)) {

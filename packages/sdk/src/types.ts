@@ -157,6 +157,8 @@ export type OrgTelemetry = {
   average_latency_ms: number;
 };
 
+export type AgentRunStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+
 export type AgentRun = {
   id: string;
   user_id: string;
@@ -178,8 +180,10 @@ export type AgentRun = {
   agent_version_id?: string | null;
   replay_of_run_id?: string | null;
   replay_reason?: string | null;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: AgentRunStatus;
   error_message?: string | null;
+  cancelled_at?: string | null;
+  cancellation_reason?: string | null;
   created_at: string;
   updated_at: string;
   input_tokens?: number;
@@ -312,8 +316,10 @@ export type Database = {
         agent_version_id?: string | null;
         replay_of_run_id?: string | null;
         replay_reason?: string | null;
-        status: 'pending' | 'running' | 'completed' | 'failed';
+        status: AgentRunStatus;
         error_message?: string | null;
+        cancelled_at?: string | null;
+        cancellation_reason?: string | null;
         created_at: string;
         updated_at: string;
       }>;
@@ -336,11 +342,12 @@ export type Database = {
         message: string;
         workflow: string[];
         memories: Array<{ role: 'user' | 'assistant'; content: string; similarity: number }>;
-        status: 'pending' | 'running' | 'completed' | 'failed';
+        status: AgentRunStatus;
         attempts: number;
         max_attempts: number;
         locked_at: string | null;
         error_message: string | null;
+        cancelled_at?: string | null;
         created_at: string;
         updated_at: string;
       }>;
@@ -488,7 +495,7 @@ export type Database = {
           message: string;
           workflow: unknown;
           memories: unknown;
-          status: 'pending' | 'running' | 'completed' | 'failed';
+          status: AgentRunStatus;
           created_at: string;
           updated_at: string;
         }>;

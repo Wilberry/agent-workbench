@@ -1,5 +1,6 @@
 import { chatCompletion } from './llm/client';
 import type { LLMMessage, LLMResponse, LLMStreamEvent, LLMToolDefinition } from './llm/types';
+import { throwIfAborted } from './cancellation';
 import { getBuiltInToolDefinitions } from './tools';
 import { executeLLMToolLoop } from './toolExecution';
 
@@ -42,6 +43,7 @@ type AgentWorkflowInput = {
   organizationId?: string | null;
   ownerUserId?: string | null;
   tools?: LLMToolDefinition[];
+  signal?: AbortSignal;
   onStreamEvent?: (event: AgentWorkflowStreamEvent) => void | Promise<void>;
 };
 
@@ -53,22 +55,25 @@ export type AgentWorkflowResult = {
 export async function callLLM(
   messages: Array<{ role: string; content: string }>,
   model = 'gpt-4o-mini',
-  provider = 'openai'
+  provider = 'openai',
+  signal?: AbortSignal
 ): Promise<LLMResponse> {
   return chatCompletion({
     provider,
     model,
     messages,
     temperature: 0.7,
-    max_tokens: 1200
+    max_tokens: 1200,
+    signal
   });
 }
 
 export async function callOpenAI(
   messages: Array<{ role: string; content: string }>,
-  model = 'gpt-4o-mini'
+  model = 'gpt-4o-mini',
+  signal?: AbortSignal
 ): Promise<LLMResponse> {
-  return callLLM(messages, model, 'openai');
+  return callLLM(messages, model, 'openai', signal);
 }
 
 function formatMemoryContext(memories: MemorySnippet[] = []) {
@@ -109,6 +114,7 @@ export async function runMultiAgentWorkflow(
     organizationId,
     ownerUserId,
     tools,
+    signal,
     onStreamEvent
   }: AgentWorkflowInput,
   modelOverride?: string,
@@ -130,6 +136,7 @@ export async function runMultiAgentWorkflow(
   const steps: Array<{ name: string; latency?: number; input?: unknown; output?: unknown }> = [];
 
   for (const role of agentRoles) {
+    throwIfAborted(signal);
     const systemContent = `You are ${role}. ${roleDescription(role)} Use available memory and tools when appropriate.`;
     const rolePrompt: LLMMessage[] = [
       {
@@ -153,6 +160,7 @@ export async function runMultiAgentWorkflow(
       agentId,
       conversationId,
       maxToolRounds: 2,
+      signal,
       onStreamEvent: onStreamEvent
         ? (event, context) => onStreamEvent({
             role,

@@ -1,3 +1,9 @@
+import {
+  AgentExecutionCancelledError,
+  cancellationReason,
+  throwIfAborted
+} from '../cancellation';
+
 export const DEFAULT_PROVIDER_TIMEOUT_MS = 60_000;
 export const DEFAULT_PROVIDER_MAX_RETRIES = 2;
 export const DEFAULT_PROVIDER_RETRY_BASE_MS = 500;
@@ -11,6 +17,7 @@ export type ProviderReliabilityOptions = {
   fetchImpl?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
   random?: () => number;
+  signal?: AbortSignal;
 };
 
 export type ProviderHttpResponse = {
@@ -150,6 +157,57 @@ async function defaultSleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function linkExternalAbort(controller: AbortController, signal?: AbortSignal): () => void {
+  if (!signal) return () => {};
+  if (signal.aborted) {
+    controller.abort(signal.reason);
+    return () => {};
+  }
+
+  const onAbort = () => controller.abort(signal.reason);
+  signal.addEventListener('abort', onAbort, { once: true });
+  return () => signal.removeEventListener('abort', onAbort);
+}
+
+async function sleepWithSignal(
+  ms: number,
+  sleep: (ms: number) => Promise<void>,
+  signal?: AbortSignal
+): Promise<void> {
+  throwIfAborted(signal);
+  if (!signal) {
+    await sleep(ms);
+    return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const cleanup = () => signal.removeEventListener('abort', onAbort);
+    const onAbort = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new AgentExecutionCancelledError(cancellationReason(signal)));
+    };
+
+    signal.addEventListener('abort', onAbort, { once: true });
+    void sleep(ms).then(
+      () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve();
+      },
+      (error) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(error);
+      }
+    );
+  });
+}
+
 export async function requestWithProviderReliability(
   provider: string,
   url: string,
@@ -166,18 +224,19 @@ export async function requestWithProviderReliability(
   const maxAttempts = maxRetries + 1;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    throwIfAborted(options.signal);
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const unlinkAbort = linkExternalAbort(controller, options.signal);
+    const timeout = setTimeout(() => controller.abort('provider_timeout'), timeoutMs);
 
     try {
       const response = await fetchImpl(url, {
         ...init,
         signal: controller.signal
       });
-      // Buffer the body while the attempt timer is still active so the timeout
-      // covers the full provider response, not only receipt of HTTP headers.
       const responseBody = await response.text();
       clearTimeout(timeout);
+      throwIfAborted(options.signal);
 
       if (response.ok) {
         return {
@@ -205,11 +264,18 @@ export async function requestWithProviderReliability(
 
       if (!retryable || attempt >= maxAttempts) throw error;
 
-      await sleep(
-        retryDelayMs(attempt, retryAfterMs, baseDelayMs, maxDelayMs, random)
+      clearTimeout(timeout);
+      await sleepWithSignal(
+        retryDelayMs(attempt, retryAfterMs, baseDelayMs, maxDelayMs, random),
+        sleep,
+        options.signal
       );
     } catch (error) {
       clearTimeout(timeout);
+      if (options.signal?.aborted) {
+        throw new AgentExecutionCancelledError(cancellationReason(options.signal));
+      }
+      if (error instanceof AgentExecutionCancelledError) throw error;
       if (error instanceof LLMProviderRequestError) throw error;
 
       const timedOut = controller.signal.aborted;
@@ -228,11 +294,14 @@ export async function requestWithProviderReliability(
 
       if (attempt >= maxAttempts) throw normalizedError;
 
-      await sleep(
-        retryDelayMs(attempt, undefined, baseDelayMs, maxDelayMs, random)
+      await sleepWithSignal(
+        retryDelayMs(attempt, undefined, baseDelayMs, maxDelayMs, random),
+        sleep,
+        options.signal
       );
     } finally {
       clearTimeout(timeout);
+      unlinkAbort();
     }
   }
 

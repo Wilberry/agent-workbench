@@ -39,6 +39,8 @@ export default function RunDetailClient({ runId, initialTrace = [], initialStatu
         setStatus('completed');
       } else if (evt.event === 'run_failed') {
         setStatus('failed');
+      } else if (evt.event === 'run_cancelled') {
+        setStatus('cancelled');
       }
     });
 
