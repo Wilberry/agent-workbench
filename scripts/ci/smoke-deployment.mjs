@@ -26,16 +26,35 @@ function normalizeDeploymentBaseUrl(value) {
   return parsed.origin;
 }
 
-async function fetchHealth(fetchImpl, url, expectedStatus, timeoutMs) {
+function normalizeProtectionBypassSecret(value) {
+  const candidate = value?.trim();
+  return candidate || undefined;
+}
+
+async function fetchHealth(fetchImpl, url, expectedStatus, timeoutMs, protectionBypassSecret) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const pathname = new URL(url).pathname;
 
   try {
-    const response = await fetchImpl(url, {
-      method: 'GET',
-      headers: { Accept: 'application/json' },
-      signal: controller.signal
-    });
+    let response;
+    try {
+      response = await fetchImpl(url, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          ...(protectionBypassSecret
+            ? { 'x-vercel-protection-bypass': protectionBypassSecret }
+            : {})
+        },
+        signal: controller.signal
+      });
+    } catch (error) {
+      if (controller.signal.aborted) {
+        throw new Error(`Health check timed out after ${timeoutMs}ms: ${pathname}`);
+      }
+      throw error;
+    }
 
     let payload = null;
     try {
@@ -45,7 +64,7 @@ async function fetchHealth(fetchImpl, url, expectedStatus, timeoutMs) {
     }
 
     if (response.status !== expectedStatus) {
-      throw new Error(`Health check failed with status ${response.status}`);
+      throw new Error(`Health check failed with status ${response.status}: ${pathname}`);
     }
 
     return payload;
@@ -57,19 +76,33 @@ async function fetchHealth(fetchImpl, url, expectedStatus, timeoutMs) {
 export async function smokeDeployment({
   baseUrl,
   fetchImpl = globalThis.fetch,
-  timeoutMs = 10_000
+  timeoutMs = 10_000,
+  protectionBypassSecret
 }) {
   if (typeof fetchImpl !== 'function') {
     throw new Error('A fetch implementation is required');
   }
 
   const origin = normalizeDeploymentBaseUrl(baseUrl);
-  const live = await fetchHealth(fetchImpl, `${origin}/api/health/live`, 200, timeoutMs);
+  const bypassSecret = normalizeProtectionBypassSecret(protectionBypassSecret);
+  const live = await fetchHealth(
+    fetchImpl,
+    `${origin}/api/health/live`,
+    200,
+    timeoutMs,
+    bypassSecret
+  );
   if (!live || live.status !== 'ok') {
     throw new Error('Liveness response is invalid');
   }
 
-  const ready = await fetchHealth(fetchImpl, `${origin}/api/health/ready`, 200, timeoutMs);
+  const ready = await fetchHealth(
+    fetchImpl,
+    `${origin}/api/health/ready`,
+    200,
+    timeoutMs,
+    bypassSecret
+  );
   if (!ready || ready.status !== 'ready') {
     throw new Error('Readiness response is invalid');
   }
@@ -79,7 +112,10 @@ export async function smokeDeployment({
 
 async function main() {
   const baseUrl = process.argv[2] ?? process.env.DEPLOYMENT_BASE_URL;
-  await smokeDeployment({ baseUrl });
+  await smokeDeployment({
+    baseUrl,
+    protectionBypassSecret: process.env.VERCEL_AUTOMATION_BYPASS_SECRET
+  });
   process.stdout.write('Deployment health smoke check passed\n');
 }
 
