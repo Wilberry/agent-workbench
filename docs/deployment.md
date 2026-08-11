@@ -8,6 +8,7 @@ Recommended architecture
 - Use a managed Supabase project for Postgres, Auth, Realtime, and Edge Functions.
 - Run background workers (agent-runtime) in a managed container service (Kubernetes, AWS ECS, or GCP Cloud Run).
 - Store secrets in a secrets manager and inject at runtime (SUPABASE_SERVICE_ROLE_KEY, OPENAI_API_KEY).
+- Use Node.js 22 for the web deployment. The repository pins Node 22 in the Vercel project root (`apps/web/package.json`) so hosted builds match the validated local runtime contract.
 
 Background workers
 
@@ -19,7 +20,7 @@ Background workers
 
 Web liveness and readiness
 
-The deployed web application exposes operational endpoints that do not require application authentication and must not expose secrets or backend error details.
+The deployed web application exposes operational endpoints that do not require application authentication and must not expose secrets or backend error details. Hosting-platform deployment protection may still sit in front of these routes; preview smoke automation must authenticate through that perimeter before the request can reach the application.
 
 ### `GET /api/health/live`
 
@@ -68,19 +69,19 @@ pnpm smoke:deployment -- https://your-agent-workbench.example.com
 
 The smoke check requires both `/api/health/live` and `/api/health/ready` to return their expected HTTP 200 contracts. The base URL must be an origin only: credentials, paths, query strings, and fragments are rejected.
 
-### Protected Vercel previews
+Vercel protected previews
 
-Vercel preview and deployment URLs may be protected by Deployment Protection. For automated health checks against a protected deployment, configure Vercel Protection Bypass for Automation and expose the generated secret to the smoke process as `VERCEL_AUTOMATION_BYPASS_SECRET`:
+If Vercel Deployment Protection is enabled for previews, configure Protection Bypass for Automation and provide the secret through the environment:
 
 ```bash
-DEPLOYMENT_BASE_URL=https://your-preview.vercel.app \
-VERCEL_AUTOMATION_BYPASS_SECRET=your-bypass-secret \
+VERCEL_AUTOMATION_BYPASS_SECRET=... \
+DEPLOYMENT_BASE_URL=https://your-preview.example.vercel.app \
 pnpm smoke:deployment
 ```
 
-When present, the smoke client sends the secret only in the `x-vercel-protection-bypass` request header. It does not put the secret in the deployment URL or normal output.
+The secret is sent only through the `x-vercel-protection-bypass` header. Do not place it in source control, deployment URLs, logs, or normal command output.
 
-If a smoke request times out, the failure names the affected health path so operators can distinguish a liveness timeout from a readiness/backend timeout.
+A redirect to Vercel SSO or an absence of application runtime logs for `/api/health/*` means the request was stopped by the hosting perimeter before Agent Workbench readiness code executed.
 
 Operational concerns
 
@@ -98,7 +99,6 @@ CI/CD
   `pnpm test:reliability` in separate jobs configured with their required
   external credentials. `pnpm test:all` is not hermetic.
 - Run `pnpm smoke:deployment` against a deployed candidate before promotion.
-- For protected Vercel previews, provide `VERCEL_AUTOMATION_BYPASS_SECRET` to the smoke process rather than disabling deployment protection globally.
 - Deploy tags/releases via GitHub Actions and create release notes for each tag.
 
 Security
