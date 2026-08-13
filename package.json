@@ -9,6 +9,8 @@
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
+    "build:worker": "pnpm --filter @agent-workbench/agent-runtime... build && node scripts/ci/prepare-worker-runtime.mjs",
+    "start:worker": "node packages/agent-runtime/dist/productionWorker.js",
     "lint": "turbo run lint",
     "typecheck": "tsc -b && tsc -p apps/web/tsconfig.json --noEmit",
     "validate": "pnpm lint && pnpm typecheck && pnpm build && pnpm test:unit",

@@ -1,0 +1,22 @@
+services:
+  - type: worker
+    name: agent-workbench-worker
+    runtime: node
+    repo: https://github.com/Wilberry/agent-workbench
+    branch: main
+    region: frankfurt
+    plan: starter
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build:worker
+    startCommand: pnpm start:worker
+    maxShutdownDelaySeconds: 300
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
