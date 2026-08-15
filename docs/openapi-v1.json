@@ -1,0 +1,175 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Agent Workbench Public API",
+    "version": "1.0.0",
+    "description": "Stable public HTTP contract for Agent Workbench API v1."
+  },
+  "paths": {
+    "/api/v1/agents": {
+      "get": {
+        "operationId": "listAgents",
+        "summary": "List organization agents",
+        "description": "Lists agents belonging to the organization represented by the bearer API key. Requires the agents:read scope.",
+        "security": [
+          {
+            "bearerApiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agents visible to the API key's organization.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The bearer API key is missing, invalid, revoked, or expired.",
+            "x-agent-workbench-error-codes": [
+              "missing_api_key",
+              "invalid_api_key"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The API key does not have the required scope.",
+            "x-agent-workbench-error-codes": [
+              "insufficient_scope"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The request could not be completed because of an internal server failure.",
+            "x-agent-workbench-error-codes": [
+              "internal_error"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicApiErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerApiKey": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "awb_live_<secret>",
+        "description": "Organization-scoped Agent Workbench API key. The list-agents operation requires the agents:read scope."
+      }
+    },
+    "schemas": {
+      "PublicApiAgent": {
+        "type": "object",
+        "required": [
+          "id",
+          "organization_id",
+          "name",
+          "description",
+          "system_prompt",
+          "model",
+          "provider",
+          "created_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "organization_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "system_prompt": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "AgentListResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicApiAgent"
+            }
+          }
+        }
+      },
+      "PublicApiErrorDetail": {
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "missing_api_key",
+              "invalid_api_key",
+              "insufficient_scope",
+              "internal_error"
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "PublicApiErrorEnvelope": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/PublicApiErrorDetail"
+          }
+        }
+      }
+    }
+  }
+}
