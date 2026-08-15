@@ -36,7 +36,7 @@ export function Navbar() {
               <span>Agent Workbench</span>
             </Link>
 
-            <div className="hidden items-center gap-6 lg:flex">
+            <div className="hidden items-center gap-5 xl:flex">
               {links.map(([label, href]) => <Link key={label} href={href} className={linkClass}>{label}</Link>)}
             </div>
 
