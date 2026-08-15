@@ -1,6 +1,8 @@
 name: Security Validation
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
