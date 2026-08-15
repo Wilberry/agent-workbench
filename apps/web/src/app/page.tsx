@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import Link from 'next/link';
 import { Architecture, Contact, Features, Footer, Problem, Production, UseCases, Vision } from '@/components/landing/Sections';
 import { Navbar } from '@/components/landing/Navbar';
@@ -67,82 +68,31 @@ const collaborationPaths = [
 
 function ProductPreview() {
   return (
-    <div className="relative mx-auto w-full max-w-2xl lg:max-w-none">
-      <div className="absolute -inset-8 -z-10 rounded-full bg-cyan-400/10 blur-3xl" />
-      <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-slate-900/80 p-2 shadow-2xl shadow-black/40 ring-1 ring-white/5 backdrop-blur-xl">
-        <div className="rounded-[1.55rem] border border-white/10 bg-slate-950">
-          <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
-            <div className="flex items-center gap-2">
-              <span className="h-2.5 w-2.5 rounded-full bg-rose-400/80" />
-              <span className="h-2.5 w-2.5 rounded-full bg-amber-300/80" />
-              <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/80" />
-            </div>
-            <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-xs font-medium text-emerald-300">
-              production healthy
-            </span>
-          </div>
+    <figure className="relative mx-auto w-full max-w-3xl lg:max-w-none">
+      <div
+        aria-hidden="true"
+        className="absolute -inset-x-10 -inset-y-8 -z-10 bg-[radial-gradient(circle_at_center,rgba(34,211,238,0.12),transparent_68%)] blur-2xl"
+      />
 
-          <div className="grid gap-px bg-white/10 lg:grid-cols-[0.72fr_1.28fr]">
-            <div className="bg-slate-950 p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Agents</p>
-              <div className="mt-4 space-y-2">
-                {['Support triage', 'Research analyst', 'Billing assistant'].map((agent, index) => (
-                  <div key={agent} className={`rounded-xl border px-3 py-3 ${index === 0 ? 'border-cyan-300/30 bg-cyan-300/[.06]' : 'border-white/5 bg-white/[.025]'}`}>
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-sm font-medium text-slate-200">{agent}</span>
-                      <span className={`h-2 w-2 rounded-full ${index === 1 ? 'bg-amber-300' : 'bg-emerald-400'}`} />
-                    </div>
-                    <p className="mt-1 text-xs text-slate-500">v{index + 3}.2 · gpt-5</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="bg-slate-950 p-5">
-              <div className="flex items-end justify-between gap-4">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Evaluation run</p>
-                  <p className="mt-1 text-lg font-semibold text-white">support-regression-042</p>
-                </div>
-                <span className="text-sm font-medium text-emerald-300">94.2% pass</span>
-              </div>
-
-              <div className="mt-5 grid grid-cols-3 gap-2">
-                {[
-                  ['Quality', '94.2%'],
-                  ['P95 latency', '1.8s'],
-                  ['Cost / run', '$0.041']
-                ].map(([label, value]) => (
-                  <div key={label} className="rounded-xl border border-white/10 bg-white/[.03] p-3">
-                    <p className="text-[11px] text-slate-500">{label}</p>
-                    <p className="mt-1 text-sm font-semibold text-white">{value}</p>
-                  </div>
-                ))}
-              </div>
-
-              <div className="mt-5 overflow-hidden rounded-xl border border-white/10">
-                <div className="border-b border-white/10 bg-white/[.025] px-4 py-2 text-xs font-medium text-slate-400">Execution trace</div>
-                <div>
-                  {[
-                    ['Model response', '428ms', 'complete'],
-                    ['search_customer', '186ms', 'complete'],
-                    ['policy_check', '92ms', 'complete'],
-                    ['Evaluation scorer', '311ms', 'passed']
-                  ].map(([label, latency, status], index) => (
-                    <div key={label} className={`grid grid-cols-[1fr_auto_auto] items-center gap-3 px-4 py-3 text-xs ${index ? 'border-t border-white/5' : ''}`}>
-                      <span className="text-slate-300">{label}</span>
-                      <span className="text-slate-500">{latency}</span>
-                      <span className="text-emerald-300">{status}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
+      <div className="overflow-hidden rounded-[1.6rem] border border-white/10 bg-slate-900/70 p-1.5 shadow-2xl shadow-black/40 ring-1 ring-white/5">
+        <div className="overflow-hidden rounded-[1.25rem] border border-white/[.08] bg-slate-950">
+          <Image
+            src="/images/agent-workbench-dashboard.webp"
+            alt="Agent Workbench dashboard showing sample agents, evaluations, traces, queue health, cost analytics, and latency in Demo Workspace"
+            width={1586}
+            height={992}
+            priority
+            quality={90}
+            sizes="(max-width: 640px) calc(100vw - 2rem), (max-width: 1023px) calc(100vw - 3rem), 55vw"
+            className="h-auto w-full"
+          />
         </div>
       </div>
-      <p className="mt-3 text-center text-xs text-slate-600">Representative product view using capabilities implemented across the platform.</p>
-    </div>
+
+      <figcaption className="mt-3 text-center text-xs leading-5 text-slate-500">
+        Representative product view · Sample data
+      </figcaption>
+    </figure>
   );
 }
 
@@ -154,7 +104,7 @@ function LandingHero() {
         <div className="absolute inset-x-0 top-0 -z-10 h-[720px] bg-[radial-gradient(circle_at_50%_0%,rgba(34,211,238,0.14),transparent_52%)]" />
         <div className="absolute inset-0 -z-10 opacity-30 [background-image:linear-gradient(rgba(148,163,184,.08)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,.08)_1px,transparent_1px)] [background-size:56px_56px] [mask-image:linear-gradient(to_bottom,black,transparent_72%)]" />
 
-        <div className="mx-auto grid max-w-7xl items-center gap-16 px-4 pb-20 sm:px-6 lg:grid-cols-[0.9fr_1.1fr] lg:px-8 lg:pb-28">
+        <div className="mx-auto grid max-w-7xl items-center gap-12 px-4 pb-20 sm:px-6 lg:grid-cols-[0.82fr_1.18fr] lg:gap-14 lg:px-8 lg:pb-28 xl:gap-16">
           <div>
             <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/[.07] px-3.5 py-2 text-sm font-medium text-cyan-100">
               <span className="h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_16px_rgba(103,232,249,.8)]" />
