@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Architecture, Contact, Features, Footer, GitHubCTA, Problem, Production, UseCases, Vision, WhyOpenSource } from '@/components/landing/Sections';
+import { Architecture, Contact, Features, Footer, Problem, Production, UseCases, Vision } from '@/components/landing/Sections';
 import { Navbar } from '@/components/landing/Navbar';
 import { githubUrl, Icon } from '@/components/landing/data';
 
@@ -35,6 +35,34 @@ const workflow = [
   ['02', 'Evaluate', 'Run datasets and compare quality before release'],
   ['03', 'Operate', 'Execute through durable production workflows'],
   ['04', 'Observe', 'Inspect traces, failures, latency, and spend']
+] as const;
+
+const buildEvidence = [
+  ['Public API contract', 'A versioned v1 contract and compatibility policy make the external surface explicit instead of accidental.'],
+  ['Release evidence gate', 'CI aggregates validation evidence so releases depend on demonstrated checks, not a green build alone.'],
+  ['Production worker runtime', 'Background agent execution has an explicit production worker path with deployment and recovery semantics.'],
+  ['Queue health observability', 'Operational checks expose queue health, retries, stale work, and failure states before they become silent incidents.']
+] as const;
+
+const collaborationPaths = [
+  {
+    title: 'Design partners',
+    description: 'Teams operating real agents can help shape workflows, reliability requirements, and the production experience.',
+    href: '/contact',
+    action: 'Talk about your use case'
+  },
+  {
+    title: 'Open-source contributors',
+    description: 'Engineers can improve runtime, evaluation, observability, SDK, documentation, and product surfaces in public.',
+    href: '/contributing',
+    action: 'See how to contribute'
+  },
+  {
+    title: 'Infrastructure collaborators',
+    description: 'Provider, database, tooling, and AI infrastructure teams can explore integrations and shared technical work.',
+    href: `${githubUrl}/issues`,
+    action: 'Start on GitHub'
+  }
 ] as const;
 
 function ProductPreview() {
@@ -94,7 +122,7 @@ function ProductPreview() {
 
               <div className="mt-5 overflow-hidden rounded-xl border border-white/10">
                 <div className="border-b border-white/10 bg-white/[.025] px-4 py-2 text-xs font-medium text-slate-400">Execution trace</div>
-                <div className="space-y-0 divide-y divide-white/5">
+                <div className="divide-y divide-white/5">
                   {[
                     ['Model response', '428ms', 'complete'],
                     ['search_customer', '186ms', 'complete'],
@@ -113,6 +141,7 @@ function ProductPreview() {
           </div>
         </div>
       </div>
+      <p className="mt-3 text-center text-xs text-slate-600">Representative product view using capabilities implemented across the platform.</p>
     </div>
   );
 }
@@ -200,6 +229,60 @@ function LandingHero() {
   );
 }
 
+function BuiltInPublic() {
+  return (
+    <section id="collaborate" className="border-y border-white/10 bg-white/[.018] py-20 sm:py-28">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="grid gap-8 lg:grid-cols-[0.78fr_1.22fr] lg:items-end">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-cyan-300">Built in public</p>
+            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-5xl">Evidence over promises.</h2>
+          </div>
+          <p className="max-w-2xl text-lg leading-8 text-slate-400 lg:justify-self-end">
+            Agent Workbench is developed through public contracts, release gates, operational runbooks, and production infrastructure work. The roadmap is visible, and collaborators can inspect the engineering decisions behind it.
+          </p>
+        </div>
+
+        <div className="mt-12 grid gap-5 md:grid-cols-2">
+          {buildEvidence.map(([title, description], index) => (
+            <div key={title} className="rounded-2xl border border-white/10 bg-slate-950/70 p-6">
+              <div className="flex items-start gap-4">
+                <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-cyan-300/20 bg-cyan-300/[.07] font-mono text-xs text-cyan-300">0{index + 1}</span>
+                <div>
+                  <h3 className="font-semibold text-white">{title}</h3>
+                  <p className="mt-2 text-sm leading-6 text-slate-400">{description}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-14 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Work with the project</p>
+            <h3 className="mt-2 text-2xl font-semibold text-white">Three useful ways to collaborate right now.</h3>
+          </div>
+          <Link href="/roadmap" className="inline-flex items-center gap-2 text-sm font-semibold text-cyan-300 transition hover:text-cyan-200">
+            Explore the public roadmap <Icon name="arrow" />
+          </Link>
+        </div>
+
+        <div className="mt-7 grid gap-4 lg:grid-cols-3">
+          {collaborationPaths.map(({ title, description, href, action }) => (
+            <Link key={title} href={href} className="group rounded-2xl border border-white/10 bg-slate-900/60 p-6 transition hover:-translate-y-0.5 hover:border-cyan-300/30 hover:bg-slate-900">
+              <h3 className="text-lg font-semibold text-white">{title}</h3>
+              <p className="mt-3 text-sm leading-6 text-slate-400">{description}</p>
+              <span className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-cyan-300 group-hover:text-cyan-200">
+                {action} <Icon name="arrow" />
+              </span>
+            </Link>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function Home() {
   return (
     <main className="min-h-screen overflow-x-hidden bg-slate-950 text-slate-100 selection:bg-cyan-300 selection:text-slate-950">
@@ -211,9 +294,8 @@ export default function Home() {
       <Production />
       <UseCases />
       <Architecture />
-      <WhyOpenSource />
+      <BuiltInPublic />
       <Vision />
-      <GitHubCTA />
       <Contact />
       <Footer />
     </main>
