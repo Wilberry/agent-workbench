@@ -38,10 +38,10 @@ const workflow = [
 ] as const;
 
 const buildEvidence = [
-  ['Public API contract', 'A versioned v1 contract and compatibility policy make the external surface explicit instead of accidental.'],
-  ['Release evidence gate', 'CI aggregates validation evidence so releases depend on demonstrated checks, not a green build alone.'],
-  ['Production worker runtime', 'Background agent execution has an explicit production worker path with deployment and recovery semantics.'],
-  ['Queue health observability', 'Operational checks expose queue health, retries, stale work, and failure states before they become silent incidents.']
+  ['Public API contract', 'A versioned v1 contract and compatibility policy make the external surface explicit.'],
+  ['Release evidence gate', 'CI aggregates validation evidence so releases depend on demonstrated checks.'],
+  ['Production worker runtime', 'Background execution has an explicit production worker path with recovery semantics.'],
+  ['Queue health observability', 'Operational checks expose queue health, retries, stale work, and failure states.']
 ] as const;
 
 const collaborationPaths = [
