@@ -25,7 +25,8 @@
     "test:playwright": "playwright test",
     "test:performance": "k6 run tests/performance/load_test.js",
     "test:e2e": "pnpm test:playwright",
-    "smoke:deployment": "node scripts/ci/smoke-deployment.mjs"
+    "smoke:deployment": "node scripts/ci/smoke-deployment.mjs",
+    "ops:queue-health": "node scripts/ops/queue-health.mjs"
   },
   "workspaces": [
     "packages/*",
