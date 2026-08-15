@@ -239,7 +239,7 @@ function BuiltInPublic() {
             <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-5xl">Evidence over promises.</h2>
           </div>
           <p className="max-w-2xl text-lg leading-8 text-slate-400 lg:justify-self-end">
-            Agent Workbench is developed through public contracts, release gates, operational runbooks, and production infrastructure work. The roadmap is visible, and collaborators can inspect the engineering decisions behind it.
+            Public contracts, release gates, runbooks, and production infrastructure make the engineering direction inspectable. The roadmap is visible, and collaboration can start from concrete work rather than a pitch deck.
           </p>
         </div>
 
@@ -259,8 +259,8 @@ function BuiltInPublic() {
 
         <div className="mt-14 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Work with the project</p>
-            <h3 className="mt-2 text-2xl font-semibold text-white">Three useful ways to collaborate right now.</h3>
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Collaborate</p>
+            <h3 className="mt-2 text-2xl font-semibold text-white">Three useful ways to work with Agent Workbench now.</h3>
           </div>
           <Link href="/roadmap" className="inline-flex items-center gap-2 text-sm font-semibold text-cyan-300 transition hover:text-cyan-200">
             Explore the public roadmap <Icon name="arrow" />
