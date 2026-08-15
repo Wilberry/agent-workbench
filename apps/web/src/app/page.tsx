@@ -122,14 +122,14 @@ function ProductPreview() {
 
               <div className="mt-5 overflow-hidden rounded-xl border border-white/10">
                 <div className="border-b border-white/10 bg-white/[.025] px-4 py-2 text-xs font-medium text-slate-400">Execution trace</div>
-                <div className="divide-y divide-white/5">
+                <div>
                   {[
                     ['Model response', '428ms', 'complete'],
                     ['search_customer', '186ms', 'complete'],
                     ['policy_check', '92ms', 'complete'],
                     ['Evaluation scorer', '311ms', 'passed']
-                  ].map(([label, latency, status]) => (
-                    <div key={label} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 px-4 py-3 text-xs">
+                  ].map(([label, latency, status], index) => (
+                    <div key={label} className={`grid grid-cols-[1fr_auto_auto] items-center gap-3 px-4 py-3 text-xs ${index ? 'border-t border-white/5' : ''}`}>
                       <span className="text-slate-300">{label}</span>
                       <span className="text-slate-500">{latency}</span>
                       <span className="text-emerald-300">{status}</span>
