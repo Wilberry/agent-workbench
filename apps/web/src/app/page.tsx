@@ -19,7 +19,7 @@ const jsonLd = [
     '@context': 'https://schema.org',
     '@type': 'Organization',
     name: 'Agent Workbench',
-    url: 'https://agent-workbench.dev',
+    url: 'https://agent-workbench-web-black.vercel.app',
     sameAs: ['https://github.com/wilberry/agent-workbench']
   }
 ];

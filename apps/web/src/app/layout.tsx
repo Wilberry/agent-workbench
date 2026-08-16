@@ -2,8 +2,10 @@ import './globals.css';
 import Providers from '@/lib/providers';
 import type { Metadata } from 'next';
 
+const productionUrl = 'https://agent-workbench-web-black.vercel.app';
+
 export const metadata: Metadata = {
-  metadataBase: new URL('https://agent-workbench.dev'),
+  metadataBase: new URL(productionUrl),
   title: 'Agent Workbench | Open-source AgentOps for production AI systems',
   description: 'Build, version, evaluate, observe, and operate AI agents with production-grade open-source AgentOps infrastructure.',
   keywords: ['AgentOps', 'LLMOps', 'AI agents', 'agent evaluation', 'AI observability', 'AI infrastructure', 'Supabase', 'Next.js'],
