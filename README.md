@@ -1,6 +1,7 @@
 # Agent Workbench
 
-**Current release: v0.4.0**
+**Current release: v0.4.0**  
+**Current engineering milestone: v1.0 production release readiness**
 
 Build, evaluate, observe, and operate AI agents on Supabase.
 
@@ -8,7 +9,9 @@ Agent Workbench is an open-source developer platform for versioned agent executi
 
 ## Current status
 
-Agent Workbench is a production-oriented pre-release platform. The backend architecture through v0.9 Developer Platform is substantially implemented, and v1.0 Production Release hardening is next.
+Agent Workbench is a production-oriented pre-release platform. The engineering milestones through v0.9 Developer Platform are implemented, and the repository-side v1.0 hardening work is largely complete. The remaining v1.0 work is release execution and production evidence rather than new product scope.
+
+The current release remains v0.4.0 until the final v1.0 release candidate passes hosted release evidence, always-on worker cutover, disaster-recovery rehearsal, and monitored canary gates. See issue #31 and `docs/operations/release-cutover.md` for the live release plan.
 
 ### Implemented
 
@@ -39,6 +42,11 @@ Agent Workbench is a production-oriented pre-release platform. The backend archi
 - Isolated external SDK client for API-key-authenticated public API workflows
 - Node 22 CLI with `awb agents list`, human-readable and JSON output, and environment-based secret handling
 - Hermetic contributor validation plus separate integration, security, reliability, and E2E suites
+- Production web liveness/readiness and deployment smoke contracts
+- Production worker supervisor with safe queue-cutover fencing
+- Cutover-aware queue-health monitoring and historical-backlog quarantine
+- Same-SHA release/security evidence aggregation
+- Repository-owned logical database backup and disaster-recovery runbooks
 
 ### Beta / stabilization
 
@@ -52,11 +60,14 @@ Agent Workbench is a production-oriented pre-release platform. The backend archi
 - Native tool/function calling is the primary runtime path; the legacy structured-text `TOOL_CALL` protocol remains temporarily as a compatibility fallback
 - Agent-run cancellation is actively propagated in-process and cooperatively observed across durable workers; an already-running external tool may finish before cross-process cancellation is observed
 - The initial public API and CLI surfaces are read-only and limited to organization agent discovery while additional versioned endpoints are stabilized
+- Always-on worker hosting is not yet enabled in production; the worker deployment contract is ready but the chosen Render background worker requires paid compute
+- GitHub-hosted release evidence is currently blocked by an account/billing runner lock, tracked in issue #18
+- Disaster-recovery tooling is implemented, but the actual production backup and isolated restore rehearsal remains an explicit release gate
 
 ### Planned
 
-- Broader provider coverage after the provider-selection and observability UX is stable
-- v1.0 production deployment, release/security evidence, observability, and public-contract hardening
+- Complete the remaining v1.0 production evidence gates and cut the platform release
+- Broader provider coverage after v1.0 stabilization
 - MCP expansion
 - Knowledge ingestion and RAG workflows
 
@@ -121,7 +132,7 @@ The evaluation system currently supports:
 - cooperative cancellation for queued/running evaluations and experiments
 - latency, token, trace, and cost aggregation
 
-With v0.6 Async Evaluations, v0.7 Model Platform, v0.8 Agent Tooling, and the v0.9 Developer Platform implementation complete, v1.0 Production Release hardening is next.
+With v0.6 Async Evaluations, v0.7 Model Platform, v0.8 Agent Tooling, and v0.9 Developer Platform implementation complete, the project is now executing the final v1.0 production-readiness gates.
 
 ## Testing and validation
 
@@ -148,6 +159,8 @@ pnpm test:security
 pnpm test:reliability
 pnpm test:e2e
 ```
+
+The final platform release additionally requires same-SHA hosted evidence and the production cutover checks documented in `docs/operations/release-cutover.md`.
 
 See `docs/local-development.md` for environment requirements.
 
@@ -189,7 +202,7 @@ The original phase-based roadmap has been retired because the repository has out
 - [x] Explicit unknown-cost semantics
 - [x] Observable workflow fallback behavior
 - [x] Truthful capability and release documentation
-- [ ] Security validation integrated into the appropriate protected-branch lifecycle
+- [x] Security validation integrated into the main/release lifecycle
 
 ### v0.6 — Async Evaluations
 
@@ -223,15 +236,28 @@ The original phase-based roadmap has been retired because the repository has out
 
 ### v1.0 — Production Release
 
-- [ ] Production deployment guarantees
-- [ ] Release and security evidence
-- [ ] Production-grade observability guarantees
-- [ ] Stable public contracts
+Repository-side engineering:
+
+- [x] Production web liveness/readiness and deployment smoke contract
+- [x] Production queue observability and operational runbooks
+- [x] Stable public API/SDK/CLI compatibility contract
+- [x] Same-SHA release/security evidence workflow
+- [x] Production worker supervisor and safe queue-cutover fence
+- [x] Database backup tooling and disaster-recovery/rollback runbook
+
+Release execution still required:
+
+- [ ] Restore GitHub-hosted Actions and produce green same-SHA release evidence (#18)
+- [ ] Deploy and verify the always-on production worker (#33)
+- [ ] Execute the production backup and isolated restore rehearsal (#45)
+- [ ] Complete monitored production canary and final release cut
+- [ ] Publish the `v1.0.0` Git tag and GitHub Release
 
 ### Post-1.0
 
 - MCP expansion
 - Knowledge ingestion and RAG
+- Broader provider coverage
 - Broader payment and commercial lifecycle support
 
 ## Local development
