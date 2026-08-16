@@ -121,7 +121,7 @@ async function fileEvidence(filePath) {
   };
 }
 
-export async function createBackupManifest({ projectRef, backupDir, createdAt, plan }) {
+export async function createBackupManifest({ projectRef, createdAt, plan }) {
   const files = [];
   for (const step of plan) {
     files.push({
@@ -140,8 +140,7 @@ export async function createBackupManifest({ projectRef, backupDir, createdAt, p
     restore_notes: {
       includes_migration_history: true,
       storage_objects_backed_up: false
-    },
-    backup_directory: backupDir
+    }
   };
 }
 
@@ -166,7 +165,6 @@ export async function runDatabaseBackup({ env = process.env, cwd = process.cwd()
 
   const manifest = await createBackupManifest({
     projectRef: config.projectRef,
-    backupDir,
     createdAt,
     plan
   });
