@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   collectQueueHealth,
   evaluateQueueSnapshot,
+  resolveQueueHealthScope,
   resolveQueueHealthThresholds
 } from '../../scripts/ops/queue-health.mjs';
 
@@ -16,6 +17,14 @@ function makeClient(fixtures: Record<string, any>) {
               state.filters.push(['eq', column, value]);
               return builder;
             },
+            gte(column: string, value: unknown) {
+              state.filters.push(['gte', column, value]);
+              return builder;
+            },
+            lt(column: string, value: unknown) {
+              state.filters.push(['lt', column, value]);
+              return builder;
+            },
             order(column: string, options: unknown) {
               state.order = [column, options];
               return builder;
@@ -26,20 +35,26 @@ function makeClient(fixtures: Record<string, any>) {
             },
             async maybeSingle() {
               const status = state.filters.find((entry: any[]) => entry[1] === 'status')?.[2];
-              return { data: fixtures[table]?.oldest?.[status] ?? null, error: null };
+              const source = state.filters.some((entry: any[]) => entry[0] === 'lt' && entry[1] === 'created_at')
+                ? fixtures[table]?.preCutover
+                : fixtures[table];
+              return { data: source?.oldest?.[status] ?? null, error: null };
             },
             then(resolve: (value: unknown) => void) {
               const status = state.filters.find((entry: any[]) => entry[1] === 'status')?.[2];
+              const source = state.filters.some((entry: any[]) => entry[0] === 'lt' && entry[1] === 'created_at')
+                ? fixtures[table]?.preCutover
+                : fixtures[table];
               if (options?.head) {
-                resolve({ count: fixtures[table]?.counts?.[status] ?? 0, error: null });
+                resolve({ count: source?.counts?.[status] ?? 0, error: null });
                 return;
               }
               if (columns === 'locked_at') {
-                resolve({ data: fixtures[table]?.leases ?? [], error: null });
+                resolve({ data: source?.leases ?? [], error: null });
                 return;
               }
               if (columns === 'attempts,max_attempts') {
-                resolve({ data: fixtures[table]?.failures ?? [], error: null });
+                resolve({ data: source?.failures ?? [], error: null });
                 return;
               }
               resolve({ data: [], error: null });
@@ -69,6 +84,18 @@ describe('queue health', () => {
       maxStaleLeaseAgeMs: 30_000,
       maxFailedJobs: 2
     });
+  });
+
+  it('uses the worker cutover timestamp as the production health boundary', () => {
+    expect(resolveQueueHealthScope({} as NodeJS.ProcessEnv)).toEqual({ notBefore: null });
+    expect(resolveQueueHealthScope({
+      AGENT_WORKBENCH_WORKER_NOT_BEFORE: '2026-08-16T07:10:00Z'
+    } as NodeJS.ProcessEnv)).toEqual({
+      notBefore: '2026-08-16T07:10:00.000Z'
+    });
+    expect(() => resolveQueueHealthScope({
+      AGENT_WORKBENCH_WORKER_NOT_BEFORE: 'not-a-timestamp'
+    } as NodeJS.ProcessEnv)).toThrow('AGENT_WORKBENCH_WORKER_NOT_BEFORE must be a valid ISO-8601 timestamp');
   });
 
   it('marks old pending work with no running consumer as degraded', () => {
@@ -135,6 +162,7 @@ describe('queue health', () => {
     });
 
     expect(health.status).toBe('degraded');
+    expect(health.scope).toEqual({ mode: 'all_rows', not_before: null });
     expect(health.queues).toHaveLength(2);
     expect(health.queues[0]).toMatchObject({
       queue: 'agent_runs',
@@ -146,5 +174,53 @@ describe('queue health', () => {
       status: 'ok',
       reasons: []
     });
+  });
+
+  it('quarantines pre-cutover backlog without hiding it from the report', async () => {
+    const notBefore = '2026-08-16T07:10:00.000Z';
+    const client = makeClient({
+      agent_run_jobs: {
+        counts: { pending: 0, running: 0, completed: 0, failed: 0, cancelled: 0 },
+        oldest: { pending: null },
+        leases: [],
+        failures: [],
+        preCutover: {
+          counts: { pending: 118, running: 0, completed: 5, failed: 18, cancelled: 0 }
+        }
+      },
+      evaluation_run_jobs: {
+        counts: { pending: 0, running: 0, completed: 0, failed: 0, cancelled: 0 },
+        oldest: { pending: null },
+        leases: [],
+        failures: [],
+        preCutover: {
+          counts: { pending: 0, running: 0, completed: 0, failed: 0, cancelled: 0 }
+        }
+      }
+    });
+
+    const health = await collectQueueHealth({
+      client: client as any,
+      nowMs: Date.parse('2026-08-16T08:00:00.000Z'),
+      notBefore,
+      thresholds: {
+        maxPendingAgeMs: 15 * 60 * 1000,
+        maxStaleLeaseAgeMs: 5 * 60 * 1000,
+        maxFailedJobs: 0
+      }
+    });
+
+    expect(health.status).toBe('ok');
+    expect(health.scope).toEqual({ mode: 'post_cutover', not_before: notBefore });
+    expect(health.queues[0]).toMatchObject({
+      status: 'ok',
+      counts: { pending: 0, running: 0, failed: 0 },
+      quarantined_pre_cutover: {
+        not_before: notBefore,
+        total: 141,
+        counts: { pending: 118, running: 0, completed: 5, failed: 18, cancelled: 0 }
+      }
+    });
+    expect(health.queues[0].reasons).toEqual([]);
   });
 });
