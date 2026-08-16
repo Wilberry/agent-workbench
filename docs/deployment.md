@@ -89,7 +89,8 @@ Operational concerns
 - Scale evaluation workers based on `evaluation_run_jobs` queue length, dataset size, and model latency.
 - Configure health checks and readiness probes for worker processes.
 - Monitor queue dead-letter/failure states and alert on sustained retry or failure-rate spikes.
-- Configure backup and PITR for the database.
+- Follow `docs/operations/disaster-recovery.md` for backup, restore rehearsal, and database-aware rollback decisions.
+- The current Free-plan Supabase deployment relies on independent logical backups; paid managed daily backups or PITR can be added later without replacing the repository recovery contract.
 
 CI/CD
 
@@ -105,3 +106,4 @@ Security
 
 - Never embed `SUPABASE_SERVICE_ROLE_KEY` in client bundles.
 - Restrict access to service role keys and rotate periodically.
+- Never commit logical backup SQL, database connection strings, or backup manifests containing operator-local paths or secrets.

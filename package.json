@@ -26,7 +26,8 @@
     "test:performance": "k6 run tests/performance/load_test.js",
     "test:e2e": "pnpm test:playwright",
     "smoke:deployment": "node scripts/ci/smoke-deployment.mjs",
-    "ops:queue-health": "node scripts/ops/queue-health.mjs"
+    "ops:queue-health": "node scripts/ops/queue-health.mjs",
+    "ops:backup-db": "node scripts/ops/backup-database.mjs"
   },
   "workspaces": [
     "packages/*",
