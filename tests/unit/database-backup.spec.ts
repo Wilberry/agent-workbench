@@ -66,7 +66,7 @@ describe('database backup operations', () => {
     ]));
   });
 
-  it('creates a manifest with file sizes and sha256 evidence', async () => {
+  it('creates a portable manifest with file sizes and sha256 evidence', async () => {
     const backupDir = await mkdtemp(path.join(tmpdir(), 'agent-workbench-backup-test-'));
     cleanupPaths.push(backupDir);
     const files = [
@@ -86,7 +86,6 @@ describe('database backup operations', () => {
 
     const manifest = await createBackupManifest({
       projectRef: 'ofjgtlympedzgmaenizn',
-      backupDir,
       createdAt: '2026-08-16T08:30:00.000Z',
       plan
     });
@@ -101,6 +100,7 @@ describe('database backup operations', () => {
         storage_objects_backed_up: false
       }
     });
+    expect(manifest).not.toHaveProperty('backup_directory');
     expect(manifest.files).toHaveLength(5);
     expect(manifest.files.every((entry) => entry.sha256.length === 64)).toBe(true);
     expect(manifest.files.every((entry) => entry.bytes > 0)).toBe(true);
