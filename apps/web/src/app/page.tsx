@@ -56,8 +56,8 @@ function ProductPreview() {
   return (
     <div className="relative mx-auto w-full max-w-5xl">
       <div className="absolute -inset-x-10 -inset-y-12 -z-10 bg-[radial-gradient(circle_at_center,rgba(34,211,238,0.16),transparent_62%)] blur-3xl" aria-hidden="true" />
-      <div className="overflow-hidden rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-1.5 shadow-[0_30px_100px_-30px_rgba(0,0,0,0.8)] ring-1 ring-white/5">
-        <div className="overflow-hidden rounded-[1.4rem] border border-white/[0.08] bg-slate-950">
+      <div className="overflow-hidden rounded-[1.4rem] border border-white/10 bg-white/[0.04] p-1 shadow-[0_30px_100px_-30px_rgba(0,0,0,0.8)] ring-1 ring-white/5 sm:rounded-[1.75rem] sm:p-1.5">
+        <div className="overflow-hidden rounded-[1.1rem] border border-white/[0.08] bg-slate-950 sm:rounded-[1.4rem]">
           <Image
             src="/images/agent-workbench-dashboard.webp"
             alt="Agent Workbench dashboard showing agents, evaluations, traces, queue health, cost analytics, and latency"
@@ -70,13 +70,13 @@ function ProductPreview() {
           />
         </div>
       </div>
-      <div className="mt-4 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-slate-500 sm:text-sm">
+      <div className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-slate-500 sm:gap-x-5 sm:text-sm">
         <span>Open source</span>
-        <span className="h-1 w-1 rounded-full bg-slate-700" />
+        <span className="h-1 w-1 rounded-full bg-slate-700" aria-hidden="true" />
         <span>TypeScript</span>
-        <span className="h-1 w-1 rounded-full bg-slate-700" />
+        <span className="h-1 w-1 rounded-full bg-slate-700" aria-hidden="true" />
         <span>PostgreSQL + Supabase</span>
-        <span className="h-1 w-1 rounded-full bg-slate-700" />
+        <span className="h-1 w-1 rounded-full bg-slate-700" aria-hidden="true" />
         <span>MIT licensed</span>
       </div>
     </div>
@@ -97,11 +97,11 @@ export default function Home() {
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="mx-auto max-w-4xl text-center">
             <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/[0.07] px-3.5 py-2 text-sm font-medium text-cyan-100">
-              <span className="h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_14px_rgba(103,232,249,.9)]" />
+              <span className="h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_14px_rgba(103,232,249,.9)]" aria-hidden="true" />
               Open-source AgentOps infrastructure
             </div>
 
-            <h1 className="mt-7 text-5xl font-semibold tracking-[-0.055em] text-white sm:text-6xl lg:text-7xl lg:leading-[0.98]">
+            <h1 className="mt-7 text-4xl font-semibold tracking-[-0.05em] text-white sm:text-6xl lg:text-7xl lg:leading-[0.98]">
               Build AI agents with confidence, not guesswork.
             </h1>
 
@@ -125,7 +125,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section id="product" className="py-20 sm:py-28">
+      <section id="product" className="scroll-mt-28 py-20 sm:py-28">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="mx-auto max-w-3xl text-center">
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-cyan-300">The essentials</p>
@@ -135,7 +135,7 @@ export default function Home() {
 
           <div className="mt-12 grid gap-4 lg:grid-cols-3">
             {capabilities.map(({ icon, eyebrow, title, description }) => (
-              <article key={eyebrow} className="group rounded-3xl border border-white/10 bg-white/[0.025] p-6 transition hover:-translate-y-1 hover:border-cyan-300/25 hover:bg-white/[0.04] sm:p-8">
+              <article key={eyebrow} className="group rounded-3xl border border-white/10 bg-white/[0.025] p-6 transition motion-safe:hover:-translate-y-1 hover:border-cyan-300/25 hover:bg-white/[0.04] sm:p-8">
                 <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-cyan-300/20 bg-cyan-300/[0.07] text-cyan-300">
                   <Icon name={icon} />
                 </div>
@@ -148,7 +148,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section id="workflow" className="border-y border-white/10 bg-white/[0.018] py-20 sm:py-28">
+      <section id="workflow" className="scroll-mt-28 border-y border-white/10 bg-white/[0.018] py-20 sm:py-28">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="grid gap-8 lg:grid-cols-[0.85fr_1.15fr] lg:items-end">
             <div>
@@ -172,7 +172,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section id="open-source" className="py-20 sm:py-28">
+      <section id="open-source" className="scroll-mt-28 py-20 sm:py-28">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-[linear-gradient(135deg,rgba(8,47,73,.75),rgba(15,23,42,.95)_45%,rgba(2,6,23,1))] px-6 py-12 sm:px-10 sm:py-16 lg:px-16">
             <div className="absolute right-0 top-0 h-64 w-64 translate-x-1/3 -translate-y-1/3 rounded-full bg-cyan-300/10 blur-3xl" aria-hidden="true" />
