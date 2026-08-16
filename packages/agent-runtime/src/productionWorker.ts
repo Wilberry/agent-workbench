@@ -1,4 +1,10 @@
 import { pathToFileURL } from 'node:url';
+import {
+  dequeueAgentRunAfter,
+  dequeueEvaluationRunAfter,
+  reclaimStaleAgentRunJobsAfter,
+  reclaimStaleEvaluationRunJobsAfter
+} from './cutoverQueue';
 import { dequeueAgentRun, reclaimStaleJobs } from './queue';
 import { processAgentRunJob } from './worker';
 import {
@@ -9,6 +15,8 @@ import {
 } from './evaluationQueue';
 import type { AgentRunQueueJob } from './queue';
 
+const WORKER_CLAIM_NOT_BEFORE_ENV = 'AGENT_WORKBENCH_WORKER_NOT_BEFORE';
+
 export type ProductionWorkerLogRecord = {
   level: 'info' | 'error';
   event: string;
@@ -18,15 +26,16 @@ export type ProductionWorkerLogRecord = {
   duration_ms?: number;
   signal?: string;
   error?: string;
+  claim_not_before?: string;
 };
 
 export type ProductionWorkerDependencies = {
-  dequeueAgentRun: () => Promise<AgentRunQueueJob | null>;
+  dequeueAgentRun: (notBefore?: string) => Promise<AgentRunQueueJob | null>;
   processAgentRunJob: (job: AgentRunQueueJob) => Promise<void>;
-  reclaimStaleAgentJobs: () => Promise<string[]>;
-  dequeueEvaluationRun: () => Promise<EvaluationRunQueueJob | null>;
+  reclaimStaleAgentJobs: (notBefore?: string) => Promise<string[]>;
+  dequeueEvaluationRun: (notBefore?: string) => Promise<EvaluationRunQueueJob | null>;
   processEvaluationRunJob: (job: EvaluationRunQueueJob) => Promise<void>;
-  reclaimStaleEvaluationJobs: () => Promise<string[]>;
+  reclaimStaleEvaluationJobs: (notBefore?: string) => Promise<string[]>;
   now: () => number;
   log: (record: ProductionWorkerLogRecord) => void;
 };
@@ -35,12 +44,20 @@ const DEFAULT_IDLE_MS = 1_000;
 const DEFAULT_ERROR_BACKOFF_MS = 5_000;
 
 const defaultDependencies: ProductionWorkerDependencies = {
-  dequeueAgentRun,
+  dequeueAgentRun: (notBefore) => notBefore
+    ? dequeueAgentRunAfter(notBefore)
+    : dequeueAgentRun(),
   processAgentRunJob,
-  reclaimStaleAgentJobs: () => reclaimStaleJobs(),
-  dequeueEvaluationRun,
+  reclaimStaleAgentJobs: (notBefore) => notBefore
+    ? reclaimStaleAgentRunJobsAfter(notBefore)
+    : reclaimStaleJobs(),
+  dequeueEvaluationRun: (notBefore) => notBefore
+    ? dequeueEvaluationRunAfter(notBefore)
+    : dequeueEvaluationRun(),
   processEvaluationRunJob,
-  reclaimStaleEvaluationJobs: () => reclaimStaleEvaluationJobs(),
+  reclaimStaleEvaluationJobs: (notBefore) => notBefore
+    ? reclaimStaleEvaluationRunJobsAfter(notBefore)
+    : reclaimStaleEvaluationJobs(),
   now: () => Date.now(),
   log(record) {
     const output = JSON.stringify({
@@ -55,6 +72,31 @@ const defaultDependencies: ProductionWorkerDependencies = {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+export function resolveWorkerClaimNotBefore(
+  value = process.env[WORKER_CLAIM_NOT_BEFORE_ENV],
+  nodeEnv = process.env.NODE_ENV
+): string | undefined {
+  const candidate = value?.trim();
+
+  if (!candidate) {
+    if (nodeEnv === 'production') {
+      throw new Error(`${WORKER_CLAIM_NOT_BEFORE_ENV} is required when NODE_ENV=production`);
+    }
+    return undefined;
+  }
+
+  if (!/(?:Z|[+-]\d{2}:\d{2})$/i.test(candidate)) {
+    throw new Error(`${WORKER_CLAIM_NOT_BEFORE_ENV} must include an explicit UTC offset or Z suffix`);
+  }
+
+  const timestamp = Date.parse(candidate);
+  if (!Number.isFinite(timestamp)) {
+    throw new Error(`${WORKER_CLAIM_NOT_BEFORE_ENV} must be a valid ISO-8601 timestamp`);
+  }
+
+  return new Date(timestamp).toISOString();
 }
 
 async function sleepWithSignal(ms: number, signal: AbortSignal): Promise<void> {
@@ -76,11 +118,12 @@ async function sleepWithSignal(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 async function processAgentLane(
-  dependencies: ProductionWorkerDependencies
+  dependencies: ProductionWorkerDependencies,
+  claimNotBefore?: string
 ): Promise<boolean> {
-  const job = await dependencies.dequeueAgentRun();
+  const job = await dependencies.dequeueAgentRun(claimNotBefore);
   if (!job) {
-    await dependencies.reclaimStaleAgentJobs().catch(() => []);
+    await dependencies.reclaimStaleAgentJobs(claimNotBefore).catch(() => []);
     return false;
   }
 
@@ -116,11 +159,12 @@ async function processAgentLane(
 }
 
 async function processEvaluationLane(
-  dependencies: ProductionWorkerDependencies
+  dependencies: ProductionWorkerDependencies,
+  claimNotBefore?: string
 ): Promise<boolean> {
-  const job = await dependencies.dequeueEvaluationRun();
+  const job = await dependencies.dequeueEvaluationRun(claimNotBefore);
   if (!job) {
-    await dependencies.reclaimStaleEvaluationJobs().catch(() => []);
+    await dependencies.reclaimStaleEvaluationJobs(claimNotBefore).catch(() => []);
     return false;
   }
 
@@ -163,13 +207,18 @@ export async function runProductionWorker(options: {
   dependencies?: ProductionWorkerDependencies;
   idleMs?: number;
   errorBackoffMs?: number;
+  claimNotBefore?: string;
 }): Promise<void> {
   const dependencies = options.dependencies ?? defaultDependencies;
   const idleMs = options.idleMs ?? DEFAULT_IDLE_MS;
   const errorBackoffMs = options.errorBackoffMs ?? DEFAULT_ERROR_BACKOFF_MS;
   let firstLane: 'agent' | 'evaluation' = 'agent';
 
-  dependencies.log({ level: 'info', event: 'worker_started' });
+  dependencies.log({
+    level: 'info',
+    event: 'worker_started',
+    ...(options.claimNotBefore ? { claim_not_before: options.claimNotBefore } : {})
+  });
 
   while (!options.signal.aborted) {
     let processed = false;
@@ -183,7 +232,7 @@ export async function runProductionWorker(options: {
     for (const lane of lanes) {
       if (options.signal.aborted) break;
       try {
-        processed = (await lane(dependencies)) || processed;
+        processed = (await lane(dependencies, options.claimNotBefore)) || processed;
       } catch {
         sawError = true;
       }
@@ -200,6 +249,7 @@ export async function runProductionWorker(options: {
 
 async function main(): Promise<void> {
   const controller = new AbortController();
+  const claimNotBefore = resolveWorkerClaimNotBefore();
 
   const requestStop = (signal: NodeJS.Signals) => {
     defaultDependencies.log({
@@ -213,7 +263,7 @@ async function main(): Promise<void> {
   process.once('SIGTERM', requestStop);
   process.once('SIGINT', requestStop);
 
-  await runProductionWorker({ signal: controller.signal });
+  await runProductionWorker({ signal: controller.signal, claimNotBefore });
 }
 
 const entrypoint = process.argv[1] ? pathToFileURL(process.argv[1]).href : null;
