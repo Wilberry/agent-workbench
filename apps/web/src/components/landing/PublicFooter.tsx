@@ -5,9 +5,9 @@ const groups = [
   {
     title: 'Product',
     links: [
-      ['Features', '/#features'],
-      ['Roadmap', '/roadmap'],
-      ['Architecture', '/#architecture']
+      ['Product', '/#product'],
+      ['Workflow', '/#workflow'],
+      ['Roadmap', '/roadmap']
     ]
   },
   {
