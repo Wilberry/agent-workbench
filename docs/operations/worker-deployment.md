@@ -19,6 +19,8 @@ The Render Blueprint in `render.yaml` defines one always-on background worker th
 
 The worker alternates which queue lane is checked first so one queue cannot permanently starve the other. A claimed job is completed before a graceful shutdown exits. If Render terminates the process before a long-running claim finishes, the existing queue lease/checkpoint/reclaim behavior remains the recovery mechanism.
 
+Production startup is fail-closed: `AGENT_WORKBENCH_WORKER_NOT_BEFORE` must contain an ISO-8601 timestamp with an explicit UTC offset or `Z` suffix. The worker uses service-role-only cutoff-aware Postgres RPCs for both claiming and stale-lease reclaim. Jobs created before the configured timestamp are therefore outside the worker's eligible claim set and are not mutated by normal worker operation.
+
 ## Build contract
 
 Render runs:
@@ -40,6 +42,7 @@ pnpm start:worker
 Configure these as Render secrets during the initial Blueprint creation flow:
 
 ```text
+AGENT_WORKBENCH_WORKER_NOT_BEFORE
 NEXT_PUBLIC_SUPABASE_URL
 SUPABASE_SERVICE_ROLE_KEY
 OPENAI_API_KEY
@@ -47,6 +50,14 @@ ANTHROPIC_API_KEY
 ```
 
 `NODE_ENV=production` is defined directly in the Blueprint.
+
+For the first production cutover, set `AGENT_WORKBENCH_WORKER_NOT_BEFORE` immediately before enabling the worker, for example:
+
+```text
+2026-08-16T07:00:00Z
+```
+
+Use the actual cutover timestamp for the deployment rather than copying the example. Keep the value stable across ordinary redeploys so jobs that were validly enqueued after cutover remain eligible for retry/reclaim.
 
 Do not commit secret values to `render.yaml`, GitHub, logs, or documentation.
 
@@ -66,26 +77,33 @@ worker_stopped
 worker_fatal_error
 ```
 
-Job events include the queue name and persisted run ID. Evaluation events also include the queue-job ID. User messages, memory payloads, API keys, and queue payloads are not included in supervisor logs.
+`worker_started` includes `claim_not_before` when the production cutover fence is active. Job events include the queue name and persisted run ID. Evaluation events also include the queue-job ID. User messages, memory payloads, API keys, and queue payloads are not included in supervisor logs.
 
 ## First-deploy verification
 
+Before creating the Render service:
+
+1. Record the current historical queue counts and oldest/newest pending timestamps.
+2. Set `AGENT_WORKBENCH_WORKER_NOT_BEFORE` to the intended cutover instant.
+3. Verify there are no intentionally valid pending jobs between that timestamp and worker enablement unless you want them consumed.
+
 After the service reaches a running state:
 
-1. Confirm the worker log contains `worker_started`.
-2. Confirm queue health no longer reports `pending_without_running_jobs` after a production-safe job is enqueued.
+1. Confirm the worker log contains `worker_started` with the expected `claim_not_before` value.
+2. Confirm the historical pre-cutover queue counts are unchanged.
 3. Enqueue one production-safe agent run and verify a matching `worker_job_claimed` event appears.
 4. Verify the run reaches a terminal state without manual queue mutation.
 5. Repeat with one small evaluation run so the evaluation lane is exercised.
-6. Run `pnpm ops:queue-health` from a trusted operator environment once the queue-observability slice is merged.
+6. Run `pnpm ops:queue-health` from a trusted operator environment.
 7. Verify a normal redeploy emits `worker_stop_requested` and `worker_stopped` before the replacement worker begins claiming new jobs.
+8. Re-check the historical pre-cutover rows and confirm they remain untouched.
 
 ## Existing backlog
 
-Do not treat deployment of the worker as authorization to purge or blindly execute historical backlog. The production queue currently contains old pending rows from earlier development activity. Before enabling sustained consumption, decide whether those rows represent disposable test data or jobs that must still execute.
+Do not treat deployment of the worker as authorization to purge or blindly execute historical backlog. The production queue contains old pending rows from earlier development activity. Those rows remain part of the system of record until a separate retention decision is made.
 
-If the backlog is not intended for execution, handle cleanup under an explicit data-retention decision rather than deleting rows as part of worker deployment.
+The production cutover fence intentionally leaves historical rows in place. Do not move the cutoff backwards merely to make queue-health counts look cleaner. If the backlog is later classified as disposable test data, handle cleanup under an explicit data-retention decision with its own audit trail.
 
 ## Scaling
 
-Start with one worker instance. The queue claim functions already use durable database ownership semantics, so horizontal scaling can be evaluated later if throughput requires it. Do not add Redis solely for scaling this v1.0 deployment; the Postgres queue is the current system of record.
+Start with one worker instance. The cutoff-aware queue claim functions preserve `FOR UPDATE SKIP LOCKED` semantics, so horizontal scaling can be evaluated later if throughput requires it. Do not add Redis solely for scaling this v1.0 deployment; the Postgres queue is the current system of record.

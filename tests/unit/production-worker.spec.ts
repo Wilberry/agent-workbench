@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  resolveWorkerClaimNotBefore,
   runProductionWorker,
   type ProductionWorkerDependencies,
   type ProductionWorkerLogRecord
@@ -164,5 +165,69 @@ describe('production worker supervisor', () => {
 
     expect(agentReclaims).toBe(1);
     expect(evaluationReclaims).toBe(1);
+  });
+
+  it('propagates the cutover fence to claim and reclaim operations', async () => {
+    const controller = new AbortController();
+    const cutoff = '2026-08-16T07:00:00.000Z';
+    const observed: Array<[string, string | undefined]> = [];
+
+    const { dependencies, logs } = createDependencies({
+      dequeueAgentRun: async (notBefore) => {
+        observed.push(['agent_dequeue', notBefore]);
+        return null;
+      },
+      reclaimStaleAgentJobs: async (notBefore) => {
+        observed.push(['agent_reclaim', notBefore]);
+        return [];
+      },
+      dequeueEvaluationRun: async (notBefore) => {
+        observed.push(['evaluation_dequeue', notBefore]);
+        return null;
+      },
+      reclaimStaleEvaluationJobs: async (notBefore) => {
+        observed.push(['evaluation_reclaim', notBefore]);
+        controller.abort('test_complete');
+        return [];
+      }
+    });
+
+    await runProductionWorker({
+      signal: controller.signal,
+      dependencies,
+      claimNotBefore: cutoff,
+      idleMs: 0,
+      errorBackoffMs: 0
+    });
+
+    expect(observed).toEqual([
+      ['agent_dequeue', cutoff],
+      ['agent_reclaim', cutoff],
+      ['evaluation_dequeue', cutoff],
+      ['evaluation_reclaim', cutoff]
+    ]);
+    expect(logs).toContainEqual(expect.objectContaining({
+      event: 'worker_started',
+      claim_not_before: cutoff
+    }));
+  });
+});
+
+describe('production worker claim cutoff configuration', () => {
+  it('fails closed when production has no cutoff', () => {
+    expect(() => resolveWorkerClaimNotBefore(undefined, 'production'))
+      .toThrow('AGENT_WORKBENCH_WORKER_NOT_BEFORE is required');
+  });
+
+  it('requires an explicit timezone and normalizes the timestamp', () => {
+    expect(() => resolveWorkerClaimNotBefore('2026-08-16T07:00:00', 'production'))
+      .toThrow('must include an explicit UTC offset or Z suffix');
+
+    expect(resolveWorkerClaimNotBefore('2026-08-16T08:00:00+01:00', 'production'))
+      .toBe('2026-08-16T07:00:00.000Z');
+  });
+
+  it('allows an unfenced worker outside production', () => {
+    expect(resolveWorkerClaimNotBefore(undefined, 'test')).toBeUndefined();
   });
 });
