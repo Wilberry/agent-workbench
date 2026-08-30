@@ -54,6 +54,7 @@ DECLARE
 BEGIN
   WITH next_job AS (
     SELECT public.agent_run_jobs.id
+    FROM public.agent_run_jobs
     WHERE status = 'pending'
     ORDER BY created_at ASC
     FOR UPDATE SKIP LOCKED
@@ -70,7 +71,19 @@ BEGIN
   END IF;
 
   RETURN QUERY
-  SELECT * FROM public.agent_run_jobs WHERE id = claimed_id;
+  SELECT
+    j.id,
+    j.run_id,
+    j.user_id,
+    j.conversation_id,
+    j.message,
+    j.workflow,
+    j.memories,
+    j.status,
+    j.created_at,
+    j.updated_at
+  FROM public.agent_run_jobs AS j
+  WHERE j.id = claimed_id;
 END;
 $$;
 
@@ -81,7 +94,8 @@ DECLARE
   rec RECORD;
 BEGIN
   FOR rec IN
-    SELECT public.agent_run_jobs.id FROM public.agent_run_jobs
+    SELECT public.agent_run_jobs.id
+    FROM public.agent_run_jobs
     WHERE status = 'running'
       AND locked_at IS NOT NULL
       AND locked_at < NOW() - lease_interval
@@ -90,9 +104,10 @@ BEGIN
   LOOP
     UPDATE public.agent_run_jobs
     SET status = 'pending', locked_at = NULL, updated_at = NOW()
-    WHERE id = rec.id;
+    WHERE public.agent_run_jobs.id = rec.id;
 
-    RETURN NEXT rec.id;
+    id := rec.id;
+    RETURN NEXT;
   END LOOP;
 
   RETURN;

@@ -2,6 +2,14 @@
 
 BEGIN;
 
+-- The organization-scoped agent policy below depends on this column. Production
+-- already uses agents.organization_id through the SDK, but a fresh migration
+-- replay previously reached this file before the column existed.
+ALTER TABLE IF EXISTS public.agents
+  ADD COLUMN IF NOT EXISTS organization_id uuid REFERENCES public.organizations(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_agents_organization_id ON public.agents(organization_id);
+
 -- Enable Row Level Security on relevant tables
 ALTER TABLE IF EXISTS public.organizations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public.teams ENABLE ROW LEVEL SECURITY;
