@@ -5,12 +5,22 @@ services:
       dockerfile: Dockerfile.worker
     restart: unless-stopped
     init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 512m
+    cpus: "0.50"
+    tmpfs:
+      - /tmp:size=64m,mode=1777
     stop_signal: SIGTERM
     stop_grace_period: 300s
     environment:
       NODE_ENV: production
-      AGENT_WORKBENCH_WORKER_NOT_BEFORE: ${AGENT_WORKBENCH_WORKER_NOT_BEFORE}
-      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
-      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      AGENT_WORKBENCH_WORKER_NOT_BEFORE: ${AGENT_WORKBENCH_WORKER_NOT_BEFORE:?Set a deliberate TEST queue cutoff}
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:?Set an isolated TEST Supabase URL}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:?Set the isolated TEST service-role key}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}

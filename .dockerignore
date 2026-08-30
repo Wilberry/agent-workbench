@@ -4,6 +4,7 @@
 node_modules
 **/node_modules
 **/dist
+**/*.tsbuildinfo
 .next
 **/.next
 .turbo
