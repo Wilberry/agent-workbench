@@ -19,7 +19,7 @@ describe('Security validation - authentication and authorization', () => {
       .eq('id', fakeId)
       .maybeSingle();
 
-    expect(error).toBeNull();
+    expect(error?.code).toBe('42501');
     expect(data).toBeNull();
   });
 
@@ -79,7 +79,7 @@ describe('Security validation - authentication and authorization', () => {
       .eq('id', run?.id)
       .maybeSingle();
 
-    expect(anonymousError).toBeNull();
+    expect(anonymousError?.code).toBe('42501');
     expect(anonymousResult).toBeNull();
   });
 });
