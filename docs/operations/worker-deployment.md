@@ -25,12 +25,14 @@ The worker finishes a claimed job before graceful shutdown exits. If forcibly te
 | `AGENT_WORKBENCH_WORKER_NOT_BEFORE` | Required for startup; test-only value; must never use production value | Explicit-offset ISO-8601 test cutoff, stable across validation restarts. |
 | `NEXT_PUBLIC_SUPABASE_URL` | Required for startup/queue access; must never use production value | Isolated test Supabase API URL. The historical name is intentionally used server-side too; a future server alias could improve clarity, but a rename is not required. |
 | `SUPABASE_SERVICE_ROLE_KEY` | Required for startup/queue and execution access; must never use production value | Isolated test service-role key. It bypasses RLS and remains a runtime secret. |
-| `OPENAI_API_KEY` | Required for OpenAI execution; must never use production value | Optional at startup; required when a queued run is pinned to OpenAI. |
-| `ANTHROPIC_API_KEY` | Required for Anthropic execution; must never use production value | Optional at startup; required when a queued run is pinned to Anthropic. |
-| `USE_MOCK_OPENAI` | Optional; test-only | Hermetic tests may set `true`; it is not evidence of live connectivity and must not be used in production. |
+| `OPENAI_API_KEY` | Required for live OpenAI execution; must never use production value | Optional at startup. It may remain unset during mock-provider validation. |
+| `ANTHROPIC_API_KEY` | Required for live Anthropic execution; must never use production value | Optional at startup. It may remain unset during mock-provider validation. |
+| `USE_MOCK_OPENAI` | Optional; test-only | Set `true` only for private worker validation to route OpenAI selections through the deterministic mock provider without live OpenAI calls. Leave unset/`false` for production and live-provider evidence. Changing this value requires a container rollout/recreation so the long-running worker receives it. |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Optional for this worker | Browser-only; the worker creates service-role clients. |
 
 Provider credentials fail at execution time for the selected provider; there is no silent cross-provider fallback. Never commit or print secrets. Compose requires cutoff, URL, and service-role variables before rendering; provider variables may be omitted when that provider is not tested.
+
+For private mock validation, set `USE_MOCK_OPENAI=true` and leave both provider API keys unset. This validates queue claim/execution/completion behavior without proving live provider connectivity. `USE_MOCK_OPENAI` must remain unset or `false` for real production execution and any live-provider evidence. Because the worker is long-running, changing this variable requires the worker container to be recreated or rolled out through the normal deployment path.
 
 ## Test backend requirement and topology
 
@@ -69,6 +71,8 @@ NEXT_PUBLIC_SUPABASE_URL=https://test.invalid \
 SUPABASE_SERVICE_ROLE_KEY=test-only-placeholder \
 docker compose -f compose.coolify.yaml config
 ```
+
+To validate mock-provider wiring specifically, render once with `USE_MOCK_OPENAI=true` and confirm the rendered worker environment contains `USE_MOCK_OPENAI: "true"`; when omitted, it should render as `"false"`.
 
 The timestamp is only a syntax example.
 
