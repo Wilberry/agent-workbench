@@ -19,9 +19,9 @@ services:
     stop_grace_period: 300s
     environment:
       NODE_ENV: production
-      AGENT_WORKBENCH_WORKER_NOT_BEFORE: ${AGENT_WORKBENCH_WORKER_NOT_BEFORE:?Set a deliberate TEST queue cutoff}
-      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:?Set an isolated TEST Supabase URL}
-      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:?Set the isolated TEST service-role key}
+      AGENT_WORKBENCH_WORKER_NOT_BEFORE: ${AGENT_WORKBENCH_WORKER_NOT_BEFORE:?Set a deliberate queue cutoff}
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:?Set the target Supabase URL}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:?Set the target Supabase service-role key}
       USE_MOCK_OPENAI: ${USE_MOCK_OPENAI:-false}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
