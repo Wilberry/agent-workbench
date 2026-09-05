@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { readdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, extname, join, resolve } from 'node:path';
+import { dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -8,8 +8,24 @@ const distRoots = [
   join(repositoryRoot, 'packages/sdk/dist'),
   join(repositoryRoot, 'packages/agent-runtime/dist')
 ];
+const workerWorkspaceTargets = new Map([
+  [
+    '@agent-workbench/agent-runtime',
+    join(repositoryRoot, 'packages/agent-runtime/dist/index.js')
+  ]
+]);
 
-function normalizeRelativeSpecifier(sourceFile, specifier) {
+function relativeModuleSpecifier(fromDirectory, targetFile) {
+  const value = relative(fromDirectory, targetFile).replace(/\\/g, '/');
+  return value.startsWith('.') ? value : `./${value}`;
+}
+
+function normalizeModuleSpecifier(sourceFile, specifier) {
+  const workspaceTarget = workerWorkspaceTargets.get(specifier);
+  if (workspaceTarget) {
+    return relativeModuleSpecifier(dirname(sourceFile), workspaceTarget);
+  }
+
   if (!specifier.startsWith('./') && !specifier.startsWith('../')) return specifier;
   if (extname(specifier)) return specifier;
 
@@ -22,12 +38,12 @@ function normalizeRelativeSpecifier(sourceFile, specifier) {
 
 export function rewriteModuleSpecifiers(source, sourceFile) {
   const rewrite = (_match, prefix, specifier, suffix) =>
-    `${prefix}${normalizeRelativeSpecifier(sourceFile, specifier)}${suffix}`;
+    `${prefix}${normalizeModuleSpecifier(sourceFile, specifier)}${suffix}`;
 
   return source
-    .replace(/(\bfrom\s*['"])(\.{1,2}\/[^'"]+)(['"])/g, rewrite)
-    .replace(/(\bimport\s*['"])(\.{1,2}\/[^'"]+)(['"])/g, rewrite)
-    .replace(/(\bimport\s*\(\s*['"])(\.{1,2}\/[^'"]+)(['"]\s*\))/g, rewrite);
+    .replace(/(\bfrom\s*['"])([^'"]+)(['"])/g, rewrite)
+    .replace(/(\bimport\s*['"])([^'"]+)(['"])/g, rewrite)
+    .replace(/(\bimport\s*\(\s*['"])([^'"]+)(['"]\s*\))/g, rewrite);
 }
 
 async function walkJavaScriptFiles(root) {
