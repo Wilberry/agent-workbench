@@ -1,69 +1,76 @@
-# Worker Container and Private Coolify Validation
+# Worker Deployment: Coolify Validation and Production Cutover
 
-Agent Workbench has a provider-portable production worker container contract. Coolify is currently a **private validation target only**. Final v1.0 production hosting is selected separately after validation. A laptop-hosted Coolify worker does not satisfy the always-on production requirement, and this procedure is not a production cutover.
+Agent Workbench uses one provider-portable worker container for the durable `agent_run_jobs` and `evaluation_run_jobs` queues.
 
-The worker services the durable `agent_run_jobs` and `evaluation_run_jobs` queues. It needs no Redis, database sidecar, persistent volume, inbound port, public domain, webhook, OAuth callback, browser route, or other inbound route. Its only required connections are outbound HTTPS to an isolated Supabase test backend and, for live-provider tests, the selected model provider.
+The hosting decision for v1.0 is:
 
-Do not reuse another application's Supabase deployment, credentials, schemas, volumes, routes, or secrets. Never connect this validation worker to Agent Workbench production or to an unrelated local Supabase stack.
+- **Current laptop Coolify:** private validation and pre-production proving ground only.
+- **Production:** Coolify on a dedicated always-on VPS.
+- **Fallback/reference:** keep `render.yaml` as a provider-portable reference, but Render is not the selected v1.0 worker host.
+
+The laptop must never receive Agent Workbench production Supabase credentials or production provider credentials. A laptop-hosted worker does not satisfy the always-on production requirement because the machine can sleep, reboot, lose power/network, or compete with unrelated services.
+
+The worker needs no Redis, database sidecar, persistent volume, inbound port, public domain, webhook, OAuth callback, browser route, or other inbound route. Its required runtime connections are outbound HTTPS to the selected Supabase project and, for live execution, the configured model provider.
 
 ## Runtime and container contract
 
-- Node.js 22 and repository-pinned pnpm 10.34.2 are used with a frozen lockfile.
-- `pnpm build:worker` builds SDK/runtime workspaces and prepares explicit ESM artifacts. The final stage keeps the proven pnpm workspace dependency layout, copies only the SDK/runtime workspaces, and starts `node packages/agent-runtime/dist/productionWorker.js`.
-- The process runs as non-root `node`, logs to stdout/stderr, exposes no port, and needs no writable application filesystem. `/tmp` is a small in-memory filesystem.
-- Compose drops Linux capabilities, prevents privilege escalation, uses an init for PID 1 signal forwarding, sends `SIGTERM`, and allows 300 seconds for shutdown.
-- Use exactly one replica initially. `restart: unless-stopped`, 0.50 CPU, 512 MiB RAM, and 256 PIDs are conservative shared-host starting limits.
-- No privileged mode, Docker socket, host network/mount, database, Redis, or persistent volume is configured. Standard Node/Debian CA certificates support outbound TLS.
+- Node.js 22 and repository-pinned pnpm 10.34.2 with a frozen lockfile.
+- `pnpm build:worker` builds SDK/runtime workspaces and prepares explicit ESM artifacts.
+- The final image copies only the required SDK/runtime workspace artifacts and starts `node packages/agent-runtime/dist/productionWorker.js`.
+- The process runs as non-root `node`, writes logs to stdout/stderr, exposes no port, and needs no writable application filesystem.
+- `/tmp` is a small tmpfs.
+- Compose drops Linux capabilities, prevents privilege escalation, uses an init for PID 1 signal forwarding, sends `SIGTERM`, and allows 300 seconds for graceful shutdown.
+- Start with one replica. The proven worker limits are 0.50 CPU, 512 MiB RAM, and 256 PIDs.
+- No privileged mode, Docker socket, host network/mount, Redis, database sidecar, or persistent volume is configured.
 
-The worker finishes a claimed job before graceful shutdown exits. If forcibly terminated first, persisted queue leases, checkpoints, and cutoff-aware stale reclaim provide recovery. This deployment contract does not change queue semantics.
+A claimed job is allowed to finish during graceful shutdown. If the process is forcibly terminated before completion, persisted queue leases, checkpoints, and cutoff-aware stale reclaim provide recovery. This deployment contract does not change queue semantics.
 
-## Environment variables
+## Environment contract
 
-| Variable | Classification | Contract |
+| Variable | Private validation | Production |
 | --- | --- | --- |
-| `NODE_ENV` | Required for startup | Fixed to `production`; activates fail-closed cutoff validation. |
-| `AGENT_WORKBENCH_WORKER_NOT_BEFORE` | Required for startup; test-only value; must never use production value | Explicit-offset ISO-8601 test cutoff, stable across validation restarts. |
-| `NEXT_PUBLIC_SUPABASE_URL` | Required for startup/queue access; must never use production value | Isolated test Supabase API URL. The historical name is intentionally used server-side too; a future server alias could improve clarity, but a rename is not required. |
-| `SUPABASE_SERVICE_ROLE_KEY` | Required for startup/queue and execution access; must never use production value | Isolated test service-role key. It bypasses RLS and remains a runtime secret. |
-| `OPENAI_API_KEY` | Required for live OpenAI execution; must never use production value | Optional at startup. It may remain unset during mock-provider validation. |
-| `ANTHROPIC_API_KEY` | Required for live Anthropic execution; must never use production value | Optional at startup. It may remain unset during mock-provider validation. |
-| `USE_MOCK_OPENAI` | Optional; test-only | Set `true` only for private worker validation to route OpenAI selections through the deterministic mock provider without live OpenAI calls. Leave unset/`false` for production and live-provider evidence. Changing this value requires a container rollout/recreation so the long-running worker receives it. |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Optional for this worker | Browser-only; the worker creates service-role clients. |
+| `NODE_ENV` | `production` | `production` |
+| `AGENT_WORKBENCH_WORKER_NOT_BEFORE` | Stable test-only cutoff | Exact UTC production cutover instant chosen immediately before first enablement |
+| `NEXT_PUBLIC_SUPABASE_URL` | Dedicated hosted test Supabase URL | Agent Workbench production Supabase URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | Dedicated test service-role/secret key | Dedicated production service-role/secret key |
+| `USE_MOCK_OPENAI` | `true` for deterministic mock validation | unset or `false` |
+| `OPENAI_API_KEY` | unset unless explicitly testing live OpenAI | production secret if OpenAI-backed runs are supported |
+| `ANTHROPIC_API_KEY` | unset unless explicitly testing live Anthropic | production secret if Anthropic-backed runs are supported |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | not required by the worker | not required by the worker |
 
-Provider credentials fail at execution time for the selected provider; there is no silent cross-provider fallback. Never commit or print secrets. Compose requires cutoff, URL, and service-role variables before rendering; provider variables may be omitted when that provider is not tested.
+Provider credentials fail at execution time for the selected provider; there is no silent cross-provider fallback.
 
-For private mock validation, set `USE_MOCK_OPENAI=true` and leave both provider API keys unset. This validates queue claim/execution/completion behavior without proving live provider connectivity. `USE_MOCK_OPENAI` must remain unset or `false` for real production execution and any live-provider evidence. Because the worker is long-running, changing this variable requires the worker container to be recreated or rolled out through the normal deployment path.
+Never commit, print, paste into tickets, or capture production secret values in screenshots. If a production secret is exposed, rotate it before enabling the worker.
 
-## Test backend requirement and topology
+### Cutoff invariant
 
-Use a **dedicated Supabase test project** by default. A Supabase development branch is acceptable only with fully separate service-role credentials and lifecycle controls and no path to production rows. An isolated local stack can be faithful because CI already exercises Supabase CLI, but a second full stack on this constrained shared laptop adds risk; never reuse or modify the unrelated existing stack.
+`AGENT_WORKBENCH_WORKER_NOT_BEFORE` is a safety boundary, not a convenience setting.
 
-Generic PostgreSQL alone is insufficient. Apply all repository migrations in order. The runtime depends on PostgREST/Supabase RPC calls, service-role authorization/RLS bypass, Auth-linked UUID data, and Supabase schema/function behavior. Realtime is not needed for worker validation. Migrations enable required extensions including `vector` for message embeddings.
+- The worker uses cutoff-aware dequeue and stale-reclaim RPCs for both queue lanes.
+- Rows created before the cutoff are quarantined from normal worker claims and reclaim.
+- After the production worker has been enabled, **never move the production cutoff backward**. Doing so could expose historical backlog that was intentionally fenced off.
+- Ordinary redeploys and rollbacks keep the exact same production cutoff.
+- A later cutoff may be used only as part of an explicit new cutover decision with operator review.
 
-Required objects include:
+## Private validation topology
 
-- Tables: `agent_run_jobs`, `agent_runs`, `agent_run_events`, `conversations`, `messages`, `agents`, `agent_versions`, `tools`, `tool_calls`, organization/membership/usage tables, `evaluation_run_jobs`, `evaluation_runs`, `evaluation_run_results`, `evaluation_datasets`, `evaluation_dataset_examples`, and `experiments`.
-- Cutoff RPCs: `dequeue_agent_run_job_after`, `reclaim_stale_agent_run_jobs_after`, `dequeue_evaluation_run_job_after`, and `reclaim_stale_evaluation_run_jobs_after`.
-- Supporting behavior: `match_messages`, quota reservation/usage functions, queue triggers, cancellation fields/functions, RLS/grants, and evaluation orchestration over evaluation tables.
-- Migration floor: the complete ordered set through `20260816065916_queue_claim_cutover_fence.sql`. Queue-only migrations omit required execution, RLS, grants, versioning, tools, cancellation, quota, and evaluation behavior.
-
-Seed minimum test-only Auth user, organization/membership and billing/quota row, agent/version, conversation, agent run/job, evaluation dataset/examples/run/job, and experiment linkage through normal application/SDK enqueue paths. Never copy production rows.
+Use the existing shared laptop Coolify only with the dedicated hosted Supabase test project.
 
 ```text
 Developer/Admin
-  -> Tailscale -> existing Coolify
-       -> Agent Workbench / agent-test / worker (one replica, no route)
+  -> Tailscale -> existing laptop Coolify
+       -> Agent Workbench / agent-test / worker
             -> dedicated TEST Supabase over HTTPS
-            -> provider test usage only when explicitly exercised
+            -> mock provider by default
 ```
 
-Do not provision the backend or Coolify resource during repository preparation.
+Do not reuse or modify the unrelated local self-hosted Supabase stack, TaskPro resources, Docker daemon settings, firewall, Tailscale configuration, global Traefik configuration, or unrelated Coolify resources.
 
-## Private validation preparation
+Use one replica, no public domain, and no exposed port.
 
-Use a separate Coolify project/environment/resource conceptually named `Agent Workbench / agent-test / worker` with `compose.coolify.yaml`. Do not alter Coolify, Traefik, Tailscale, Docker daemon, firewall, host networking, existing Supabase, or unrelated resources. Assign no domain or port. Confirm one replica and the Compose limits/security settings.
+### Private validation preparation
 
-Render Compose locally with unmistakable dummy values, but do not start it:
+Render Compose with unmistakable dummy values before first setup:
 
 ```sh
 AGENT_WORKBENCH_WORKER_NOT_BEFORE=2026-08-30T00:00:00Z \
@@ -72,39 +79,210 @@ SUPABASE_SERVICE_ROLE_KEY=test-only-placeholder \
 docker compose -f compose.coolify.yaml config
 ```
 
-To validate mock-provider wiring specifically, render once with `USE_MOCK_OPENAI=true` and confirm the rendered worker environment contains `USE_MOCK_OPENAI: "true"`; when omitted, it should render as `"false"`.
+For deterministic private validation, render/deploy with `USE_MOCK_OPENAI=true` and leave live provider keys unset. When `USE_MOCK_OPENAI` is omitted it must resolve to `false`.
 
-The timestamp is only a syntax example.
+The example cutoff above is syntax only and must never be copied into production.
 
-## Cutoff-fence validation (test data only)
+## Test backend requirements
 
-1. Record IDs, statuses, attempts, `locked_at`, and timestamps for pending agent and evaluation jobs created before a planned cutoff.
-2. Create and record one stale `running` test lease in each lane before the cutoff.
-3. Start one worker with a cutoff after those rows; confirm `worker_started.claim_not_before` and that all pre-cutoff fields remain unchanged.
-4. Enqueue a minimal post-cutoff agent run through the test application/SDK; confirm claim log and terminal run/queue state.
-5. Enqueue a tiny post-cutoff evaluation; confirm claim log, results, experiment reconciliation, and terminal state.
-6. Safely age isolated-test leases. Confirm a post-cutoff stale lease is reclaimed while pre-cutoff stale leases remain unchanged.
-7. Restart with the identical cutoff, process one new job, and prove the original pre-cutoff snapshots remain identical.
-8. Run `pnpm ops:queue-health` from a trusted test environment with the same test URL, test key, and cutoff. Preserve redacted evidence.
+Use a dedicated Supabase test project. Generic PostgreSQL alone is insufficient because the worker depends on Supabase/PostgREST behavior, service-role access, RLS/grants, RPCs, and the repository schema.
 
-## Shutdown and recovery validation
+Apply the complete ordered migration set required by the current repository. Worker-critical objects include:
 
-1. While idle, send `SIGTERM`; require `worker_stop_requested`, then `worker_stopped`, exit, and configured restart behavior. Repeat `SIGINT` locally.
-2. During one small claimed job, request a normal stop/redeploy. Verify no new claim after the request, safe terminal/checkpoint state, `worker_stopped`, and exit within 300 seconds.
-3. Redeploy only this test resource; verify the replacement preserves the exact cutoff and one-replica count.
-4. Force-terminate only the isolated worker after a claim. After its lease expires, verify cutoff-aware reclaim and completion/resumption from persisted state.
-5. Inspect provider/tool evidence for duplicate irreversible effects. Use idempotent or read-only tools: lease recovery cannot make arbitrary external side effects transactional.
+- `agent_run_jobs`, `agent_runs`, `agent_run_events`, `conversations`, `messages`, `agents`, `agent_versions`, `tools`, and `tool_calls`;
+- organization/membership/usage tables;
+- `evaluation_run_jobs`, `evaluation_runs`, `evaluation_run_results`, `evaluation_datasets`, `evaluation_dataset_examples`, and `experiments`;
+- cutoff RPCs `dequeue_agent_run_job_after`, `reclaim_stale_agent_run_jobs_after`, `dequeue_evaluation_run_job_after`, and `reclaim_stale_evaluation_run_jobs_after`;
+- quota, cancellation, versioning, RLS/grant, embedding/matching, and evaluation orchestration behavior.
 
-## Shared-host resource safety
+Seed only test fixtures. Never copy production rows into the test project.
 
-This is functional validation, not capacity testing. Run one small job at a time; no load tests, throughput benchmarks, concurrent builds, or deliberate stress.
+## Proven private validation gates
 
-Capture `docker stats --no-stream` and host free memory/load/disk before, during, and after steps. Record idle RSS, active peak RAM/CPU, image size, build peak RAM/CPU/duration, disk delta, Supabase request/error and network effects where available, restart count, and OOM/kill events. Build only while the host is otherwise quiet.
+Before considering the container contract ready for production, preserve evidence for these gates on the isolated test backend:
 
-Pause if available host memory falls below 1.5 GiB, swap thrashes, sustained load exceeds four logical CPUs, disk free falls below 10 GiB or 15%, the worker restarts unexpectedly, or unrelated services degrade. These are conservative stop conditions, not capacity claims.
+1. Worker starts with the expected cutoff and one replica.
+2. Pre-cutoff pending and stale-running sentinel rows remain unchanged.
+3. One post-cutoff agent run completes end to end.
+4. One post-cutoff evaluation completes end to end.
+5. Runtime traces/telemetry identify the expected provider/model and persist token/cost/latency fields.
+6. Idle `SIGTERM` produces `worker_stop_requested`, `worker_stopped`, then a clean `worker_started` after restart.
+7. Restart preserves the same cutoff and image contract.
+8. `pnpm ops:queue-health` detects a known failure under default thresholds and returns healthy only when an explicit test-only exception threshold is supplied.
+9. No worker fatal errors, unexpected restart loop, or OOM kill occurs.
 
-## Production cutover remains separate
+## Shared-host safety for laptop validation
 
-Private validation proves the container/runtime contract, environment validation, cutoff behavior, both lanes, shutdown/recovery, and single-job resource use. It does not prove always-on availability, production isolation, monitoring, backup/restore, capacity, provider quotas, or operational ownership.
+Laptop validation is functional testing, not capacity testing.
 
-The final production host remains a future decision under issue #33 and the release-cutover runbook. Preserve `render.yaml` as a provider reference/fallback. Production cutover requires separately approved infrastructure, operational evidence, monitoring/alerting, secrets, rollback, disaster-recovery rehearsal, capacity/cost review, and an explicit backlog decision.
+- Run one small job at a time.
+- Do not run load tests, throughput benchmarks, deliberate stress, or overlapping heavy builds.
+- Preserve unrelated workloads.
+- Capture `docker stats --no-stream`, host free memory/load/disk, restart count, and OOM state around significant validation steps.
+
+Pause if available host memory falls below 1.5 GiB, swap thrashes, sustained load exceeds the four-logical-CPU host envelope, disk free falls below 10 GiB or 15%, the worker restarts unexpectedly, or unrelated services degrade.
+
+These are conservative laptop stop conditions, not production capacity claims.
+
+# Production Coolify on a dedicated VPS
+
+## VPS prerequisites
+
+Provision a dedicated or strongly isolated always-on Linux VPS for Agent Workbench production Coolify.
+
+Recommended starting host envelope:
+
+- at least 2 vCPU;
+- at least 2 GiB RAM;
+- sufficient disk headroom for Coolify, Docker images/build cache, logs, and OS updates;
+- stable public internet connectivity and automatic restart after host reboot;
+- SSH/admin access restricted to the operator;
+- current OS security updates;
+- time synchronization enabled.
+
+The worker itself remains limited to the proven 0.50 CPU / 512 MiB starting envelope unless production measurements justify a change.
+
+Do not colocate unrelated databases or business-critical applications on the initial worker VPS. The worker is stateless, so no application persistent volume is required.
+
+## Production Coolify resource
+
+Create a dedicated Agent Workbench project/environment/application in the production Coolify instance.
+
+Required source/runtime settings:
+
+- repository: `Wilberry/agent-workbench`;
+- branch: `main`;
+- Compose file: `/compose.coolify.yaml`;
+- one replica;
+- no domain;
+- no exposed port;
+- no host network;
+- no Docker socket or host mounts;
+- `Git Commit SHA = HEAD` for normal branch-following deployments, while the deployment log must still be checked for the exact resolved SHA before acceptance.
+
+For the first production cutover, record the exact reviewed `main` SHA and require the Coolify deployment log to resolve to that same SHA before canary execution.
+
+## Production preflight
+
+Do not create or enable the production worker until all items below are complete:
+
+1. Confirm the production Supabase project is healthy.
+2. Confirm the complete migration chain required by the worker is applied, including the cutoff-aware claim/reclaim migration.
+3. Take a fresh read-only production queue snapshot for both `agent_run_jobs` and `evaluation_run_jobs`.
+4. Record pending/running/completed/failed counts, oldest pending timestamps, stale leases, and exhausted failures.
+5. Make an explicit decision to leave historical backlog quarantined. Do not delete, reset, rewrite, or replay it as part of worker deployment.
+6. Confirm no other production worker is consuming these queues.
+7. Confirm one production Coolify replica will be created and no public route will be assigned.
+8. Load production Supabase and provider credentials only into the dedicated production Coolify resource.
+9. Set `USE_MOCK_OPENAI=false` or leave it unset.
+10. Choose the exact UTC `AGENT_WORKBENCH_WORKER_NOT_BEFORE` immediately before first worker enablement and record it in the cutover evidence.
+11. Confirm the cutoff is later than all historical rows intended to remain quarantined.
+12. Confirm the reviewed `main` SHA to deploy.
+
+## First production deployment
+
+1. Deploy the dedicated production Coolify application from `main`.
+2. Verify the deployment log resolves to the reviewed SHA.
+3. Verify exactly one worker container is running.
+4. Verify `status=running`, no OOM kill, and no restart loop.
+5. Verify `worker_started.claim_not_before` exactly matches the approved production cutoff.
+6. Verify `USE_MOCK_OPENAI` is not enabled.
+7. Verify there are no `worker_fatal_error` events.
+8. Re-run a read-only production queue snapshot and prove pre-cutoff historical rows have not changed.
+
+Do not proceed to canaries if any of these checks fail.
+
+## Production canary sequence
+
+Use supported application/SDK enqueue paths. Do not insert raw queue rows manually unless a separately reviewed incident procedure requires it.
+
+1. Enqueue exactly one small production-safe agent run after the cutoff.
+2. Verify matching `worker_job_claimed` and `worker_job_finished` events.
+3. Verify run and queue state become terminal `completed` without manual mutation.
+4. Verify provider/model and telemetry are persisted as expected.
+5. Confirm the historical pre-cutoff queue snapshot is unchanged.
+6. Enqueue exactly one small evaluation run after the cutoff.
+7. Verify one persisted evaluation result and completed queue/run state.
+8. Confirm the historical pre-cutoff queue snapshot is still unchanged.
+9. Do not automatically retry a failed canary; preserve the failed rows and diagnose first.
+
+## Queue health and alert thresholds
+
+`pnpm ops:queue-health` is the canonical operator snapshot.
+
+Default production thresholds are intentionally strict:
+
+- maximum pending age: 900 seconds;
+- maximum stale lease age: 300 seconds;
+- maximum failed jobs: 0.
+
+Alert/investigate when any of these occur:
+
+- queue health exits non-zero;
+- pending age exceeds 15 minutes;
+- any stale-running lease is detected;
+- any failed job appears;
+- pending jobs exist while running jobs are zero;
+- the worker process is absent;
+- unexpected container restart count increases;
+- OOM kill occurs;
+- repeated `worker_job_error` or any `worker_fatal_error` appears;
+- host disk, memory, or CPU headroom becomes unsafe.
+
+A non-zero production failure threshold must never be configured as a permanent way to hide new failures. If a known preserved production failure must be acknowledged, record the exact reason, owner, and expiry/review condition.
+
+## Controlled restart verification
+
+After both production canaries pass and the queues are idle:
+
+1. Confirm no post-cutoff pending/running jobs are active.
+2. Request a normal Coolify redeploy/restart of only the Agent Workbench worker.
+3. Require `worker_stop_requested`, `worker_stopped`, then `worker_started`.
+4. Verify the exact same production cutoff remains loaded.
+5. Verify one replica, no OOM kill, and no restart loop.
+6. Re-run queue health and the historical pre-cutoff snapshot comparison.
+
+## Rollback
+
+Rollback is designed to stop new consumption without mutating queue history.
+
+If the production worker behaves unexpectedly:
+
+1. Stop or disable only the Agent Workbench worker resource in production Coolify.
+2. Do not delete or rewrite queue rows.
+3. Preserve logs, deployment SHA, queue snapshots, and failed run/job IDs.
+4. Revert to the last known-good worker image/SHA if a code rollback is appropriate.
+5. Keep the **same production cutoff** during rollback/redeploy. Never move it backward.
+6. Verify `worker_started` with the unchanged cutoff before resuming canaries or normal consumption.
+7. Escalate provider/tool-side duplicate-effect concerns separately because queue lease recovery cannot make arbitrary external side effects transactional.
+
+## Secrets and access
+
+- Production service-role and provider keys exist only in the production Coolify secret store and other explicitly approved production systems.
+- Do not copy production secrets to the laptop validation Coolify instance.
+- Do not expose the worker via a public route.
+- Restrict production Coolify administration and VPS SSH access to operators.
+- Rotate any credential that is accidentally exposed.
+
+## Backup and disaster recovery boundary
+
+The worker is stateless. Durable execution state lives in Supabase/Postgres.
+
+Production worker cutover does not replace the separate database backup/restore rehearsal tracked by the production-readiness work. Do not treat successful worker deployment as proof of database disaster recovery.
+
+## Closure criteria for issue #33
+
+Issue #33 can close only after all of the following are evidenced on the dedicated production VPS:
+
+- always-on Coolify worker exists and runs the reviewed `main` contract;
+- production cutoff and secrets are configured safely;
+- historical pre-cutoff backlog remains unchanged;
+- one production-safe agent run completes;
+- one production-safe evaluation completes;
+- queue health/monitoring thresholds are established;
+- graceful restart behavior is verified;
+- logs expose queue/run correlation identifiers;
+- rollback steps are documented and tested at least at the controlled-restart level;
+- operational ownership is explicit.
+
+Until those conditions are met, the laptop Coolify remains validation infrastructure only and must not be described as the production worker host.
