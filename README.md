@@ -11,7 +11,9 @@ Agent Workbench is an open-source developer platform for versioned agent executi
 
 Agent Workbench is a production-oriented pre-release platform. The engineering milestones through v0.9 Developer Platform are implemented, and the repository-side v1.0 hardening work is largely complete. The remaining v1.0 work is release execution and production evidence rather than new product scope.
 
-The current release remains v0.4.0 until the final v1.0 release candidate passes hosted release evidence, always-on worker cutover, disaster-recovery rehearsal, and monitored canary gates. See issue #31 and `docs/operations/release-cutover.md` for the live release plan.
+The current release remains v0.4.0 until the final v1.0 release candidate passes the remaining always-on production worker cutover, hosted same-SHA release evidence, and monitored production canary gates. The production backup and isolated restore rehearsal is complete.
+
+The canonical project roadmap is [`ROADMAP.md`](./ROADMAP.md). The living implementation and release tracker is [`STATUS.md`](./STATUS.md). README summaries are informational only; if roadmap scope or sequencing ever disagrees with `ROADMAP.md`, `ROADMAP.md` is authoritative.
 
 ### Implemented
 
@@ -47,6 +49,7 @@ The current release remains v0.4.0 until the final v1.0 release candidate passes
 - Cutover-aware queue-health monitoring and historical-backlog quarantine
 - Same-SHA release/security evidence aggregation
 - Repository-owned logical database backup and disaster-recovery runbooks
+- Executed production logical backup and isolated restore rehearsal with retained recovery evidence
 
 ### Beta / stabilization
 
@@ -60,16 +63,14 @@ The current release remains v0.4.0 until the final v1.0 release candidate passes
 - Native tool/function calling is the primary runtime path; the legacy structured-text `TOOL_CALL` protocol remains temporarily as a compatibility fallback
 - Agent-run cancellation is actively propagated in-process and cooperatively observed across durable workers; an already-running external tool may finish before cross-process cancellation is observed
 - The initial public API and CLI surfaces are read-only and limited to organization agent discovery while additional versioned endpoints are stabilized
-- Always-on worker hosting is not yet enabled in production; the worker deployment contract is ready but the chosen Render background worker requires paid compute
+- The worker container, cutoff fence, graceful shutdown path, queue-health contract, and Coolify deployment path are validated against isolated infrastructure; final always-on production VPS cutover remains required
 - GitHub-hosted release evidence is currently blocked by an account/billing runner lock, tracked in issue #18
-- Disaster-recovery tooling is implemented, but the actual production backup and isolated restore rehearsal remains an explicit release gate
+- The production backup and isolated restore rehearsal is complete; issue #45 contains the retained recovery evidence
 
 ### Planned
 
 - Complete the remaining v1.0 production evidence gates and cut the platform release
-- Broader provider coverage after v1.0 stabilization
-- MCP expansion
-- Knowledge ingestion and RAG workflows
+- Begin v1.1 MCP + Knowledge Platform only after v1.0 release, unless the roadmap owner explicitly approves a change
 
 ## Repository structure
 
@@ -191,74 +192,29 @@ See `docs/local-development.md` for environment requirements.
 - k6
 - GitHub Actions
 
-## Roadmap
+## Roadmap and engineering status
 
-The original phase-based roadmap has been retired because the repository has outgrown it. The roadmap now tracks engineering maturity.
+The project uses two repository-level governance documents:
 
-### v0.5 — Runtime Stabilization
+- [`ROADMAP.md`](./ROADMAP.md) is the **canonical, owner-controlled single source of truth** for milestone scope, order, and approved engineering direction. It must not be changed without explicit approval from `@Wilberry`.
+- [`STATUS.md`](./STATUS.md) is the **living engineering tracker** for completed work, evidence, blockers, current priority, and release progress. It may be updated as engineering progresses, but it cannot redefine roadmap scope.
 
-- [x] Hermetic default validation
-- [x] Strict provider selection and configuration behavior
-- [x] Explicit unknown-cost semantics
-- [x] Observable workflow fallback behavior
-- [x] Truthful capability and release documentation
-- [x] Security validation integrated into the main/release lifecycle
+Current summary:
 
-### v0.6 — Async Evaluations
+```text
+v0.5 Runtime Stabilization            ✅
+v0.6 Async Evaluations                ✅
+v0.7 Model Platform                   ✅
+v0.8 Agent Tooling                    ✅
+v0.9 Developer Platform               ✅
 
-- [x] Queue evaluation runs
-- [x] Queue experiment execution
-- [x] Per-example progress
-- [x] Retry and recovery
-- [x] Cancellation
-- [x] Durable aggregation and completion semantics
+v1.0 Production Release               🔥 CURRENT
+v1.1 MCP + Knowledge Platform         ⏸ PLANNED
+v1.2 Evaluation Intelligence          ⏸ PLANNED
+v1.3 Platform Expansion               ⏸ PLANNED
+```
 
-### v0.7 — Model Platform
-
-- [x] Additional live providers
-- [x] Provider-specific retry policies
-- [x] Provider health reporting
-- [x] Versioned pricing registry
-- [x] Provider/model selection surface backed by configured, metered catalog entries
-
-### v0.8 — Agent Tooling
-
-- [x] Provider-native tool/function calling
-- [x] Richer streaming
-- [x] Stronger workflow-runtime semantics
-
-### v0.9 — Developer Platform
-
-- [x] Public API authentication
-- [x] API keys
-- [x] CLI
-- [x] Polished external SDK workflows
-
-### v1.0 — Production Release
-
-Repository-side engineering:
-
-- [x] Production web liveness/readiness and deployment smoke contract
-- [x] Production queue observability and operational runbooks
-- [x] Stable public API/SDK/CLI compatibility contract
-- [x] Same-SHA release/security evidence workflow
-- [x] Production worker supervisor and safe queue-cutover fence
-- [x] Database backup tooling and disaster-recovery/rollback runbook
-
-Release execution still required:
-
-- [ ] Restore GitHub-hosted Actions and produce green same-SHA release evidence (#18)
-- [ ] Deploy and verify the always-on production worker (#33)
-- [ ] Execute the production backup and isolated restore rehearsal (#45)
-- [ ] Complete monitored production canary and final release cut
-- [ ] Publish the `v1.0.0` Git tag and GitHub Release
-
-### Post-1.0
-
-- MCP expansion
-- Knowledge ingestion and RAG
-- Broader provider coverage
-- Broader payment and commercial lifecycle support
+Do not use this README summary as an independent roadmap. See `ROADMAP.md` for approved scope and `STATUS.md` for current implementation state.
 
 ## Local development
 
