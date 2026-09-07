@@ -61,6 +61,7 @@
 - [x] Authenticated tenant-isolation smoke on restored staging target
 - [x] Recovery interval and recovery-point evidence recorded
 - [x] Production-oriented public homepage and current production web deployment
+- [x] Canonical roadmap and living status tracker established on `main`
 
 ## Remaining release gates
 
@@ -91,11 +92,27 @@ State: **Open / current engineering priority**
 
 The worker implementation, cutoff safety, private Coolify validation, graceful restart behavior, and queue monitoring contract are ready. The remaining work is the production deployment and production-safe canary on dedicated always-on infrastructure.
 
+Latest recheck on 2026-09-08 confirms only the validation/recovery laptop is currently connected through the available server-management surface. It remains validation-only and must not be promoted to production. A dedicated always-on VPS must be provisioned/connected before production secrets, cutoff selection, and canaries can be executed.
+
 ### #18 — GitHub-hosted Actions account/billing lock
 
 State: **Open / external release blocker**
 
 GitHub-hosted jobs have failed before workflow step execution because the account is locked due to a billing issue. This prevents trusted hosted same-SHA release evidence until the account-level problem is resolved.
+
+Latest recheck on current `main` SHA `ae15dc12fdc9e4d607f26e4833a303ddd3830e0d`:
+
+- Validate run `34169003547` failed with job `101885571014`, `steps: null`, and no retrievable logs.
+- Security Validation run `34169003486` failed with job `101885571013`, `steps: null`, and no retrievable logs.
+- This reproduces the existing pre-step runner failure and provides no application-code failure signal.
+
+### #52 — Roadmap Code Owner enforcement
+
+State: **Open / repository administration follow-up**
+
+`ROADMAP.md` is owner-controlled and `.github/CODEOWNERS` assigns it to `@Wilberry`, but the repository currently reports no rulesets and the connected GitHub App cannot modify branch-protection administration. Enable a `main` ruleset requiring pull requests and Code Owner review to make the documented roadmap lock mechanically enforceable.
+
+This governance follow-up does not change v1.0 feature scope and does not authorize any roadmap modification.
 
 ## Recently completed release evidence
 
@@ -149,9 +166,9 @@ Planned sequence is defined only in `ROADMAP.md`. No v1.1 implementation should 
 
 ### 2026-09-08
 
-- Established this file as the living engineering status tracker.
+- Established `ROADMAP.md` as the canonical owner-controlled roadmap and `STATUS.md` as the living tracker via PR #51.
 - Recorded DR rehearsal as complete following issue #45 closure.
-- Confirmed v1.0 remains the current milestone.
-- Confirmed production worker cutover (#33) as the next engineering priority.
-- Confirmed hosted CI/account lock (#18) remains a release blocker.
-- Confirmed v1.1 MCP + Knowledge Platform remains planned but must not start before v1.0 release without owner approval.
+- Rechecked current `main` hosted CI and confirmed #18 still fails before workflow steps on Validate and Security Validation.
+- Rechecked connected hosts and confirmed no dedicated always-on production VPS is available yet; the laptop remains validation-only under #33.
+- Opened #52 to track mechanical Code Owner enforcement for `ROADMAP.md` on `main`.
+- Confirmed v1.0 remains the current milestone and v1.1 MCP + Knowledge Platform must not start before v1.0 release without owner approval.
