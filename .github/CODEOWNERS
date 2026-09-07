@@ -1,0 +1,7 @@
+# Agent Workbench ownership rules
+#
+# ROADMAP.md is the canonical owner-controlled project roadmap.
+# Configure the main branch/ruleset to require Code Owner review so roadmap
+# changes cannot merge without explicit approval from @Wilberry.
+
+/ROADMAP.md @Wilberry
